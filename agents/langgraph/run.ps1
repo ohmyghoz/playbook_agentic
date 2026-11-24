@@ -1,11 +1,12 @@
 # Starts the LangGraph agent service on http://127.0.0.1:8101 (contracts/agent-service-api.md).
-# Needs agents/langgraph/.env (see .env.example) and IDX_MCP_TOKEN in the environment.
+# Needs agents/langgraph/.env with OPENROUTER_API_KEY, MODEL_BASE_URL, MODEL_NAME,
+# and IDX_MCP_TOKEN in the environment.
 
 $ErrorActionPreference = 'Stop'
 Set-Location $PSScriptRoot
 
 if (-not (Test-Path '.env')) {
-    Write-Error '.env belum ada. Salin .env.example menjadi .env lalu isi OPENROUTER_API_KEY.'
+    Write-Error '.env belum ada. Buat agents/langgraph/.env berisi OPENROUTER_API_KEY, MODEL_BASE_URL, dan MODEL_NAME.'
     exit 1
 }
 
