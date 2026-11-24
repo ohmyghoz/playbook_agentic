@@ -9,6 +9,18 @@ Dua hal yang harus terbukti di akhir:
 1. Tiga solusi agent yang berbeda bisa diintegrasikan lewat satu kontrak.
 2. Front end bisa menangani interaksi agent (teks mengalir, progres tool, approval, stop, error, proses panjang) tanpa tahu solusi mana yang bekerja.
 
+## Tujuan tambahan
+
+Aplikasi ini menjadi acuan Bagian IV playbook (Bab 10 sampai 13). Setiap butir outline bab harus punya contoh yang bisa ditunjuk di kode dan diperagakan di browser dengan provider `fake`, tanpa memanggil model.
+
+Aturan tambahan untuk tahap lanjutan:
+
+- Kerjakan Tahap 7 sampai 12 dengan provider `fake`. Agent sungguhan hanya disentuh saat sebuah tahap mengubah kontrak.
+- Setiap tahap ditutup dengan memperbarui `docs/GAP-BAGIAN-IV.md`: ubah status butir yang selesai dan perbarui rujukan file.
+- Setiap pola atau mekanisme yang akan dikutip buku harus berada di file tersendiri dengan nama yang menjelaskan isinya, supaya bisa dirujuk per bab.
+- Halaman demo berada di bawah `/Lab` dan hanya aktif saat `Agent:Provider` = `fake`.
+- Contract test Tahap 6a harus tetap lulus di akhir setiap tahap.
+
 ## Cara memulai sesi
 
 Di awal setiap sesi, baca bagian "Status tahap" di bawah, lalu sebutkan ke saya tahap mana yang sedang berjalan dan apa langkah berikutnya. Jika saya menulis "lanjut", kerjakan tahap pertama yang belum selesai.
@@ -102,12 +114,86 @@ GET  /runs/{id}/events      SSE, event sudah dalam bentuk katalog
 POST /runs/{id}/resume      keputusan approval
 ```
 
+## Keputusan kontrak
+
+Tujuh usulan perubahan di `GAP-BAGIAN-IV.md` diputuskan sebagai berikut. Yang diterima sudah saya setujui dan dikerjakan di tahap yang disebut.
+
+| Kebutuhan | Keputusan | Cara |
+|---|---|---|
+| Progres multi-langkah | Ubah kontrak (Tahap 8) | Event baru `step_started` dengan `step` (kode tahap dari ASD) dan `label` |
+| Bukti dan sumber data | Ubah kontrak (Tahap 8) | Field opsional `source` dan `resultPreview` di `tool_call_finished`. `resultPreview` adalah data mentah yang dipotong maksimum 8 KB |
+| Progres per worker | Ubah kontrak (Tahap 13) | Field opsional `agentName`, event `worker_started` dan `worker_finished`, field `useCase` di `POST /runs` |
+| Indikator berpikir | Tanpa perubahan kontrak | UI menampilkan indikator jika tidak ada event selama N detik saat run aktif |
+| Label tool yang ramah | Tanpa perubahan kontrak | Peta nama tool ke label bahasa Indonesia di JavaScript |
+| Keputusan analis di aliran event | Tanpa perubahan kontrak | Aplikasi menggabungkan `AgentEventRecord` dan `ApprovalDecisionRecord` berdasarkan waktu saat menampilkan |
+| Approval kedaluwarsa | Tanpa perubahan kontrak | Aplikasi yang memutuskan kedaluwarsa, lalu memanggil pembatalan |
+
+Tidak ada endpoint baru untuk data mentah. Aplikasi menyimpan `resultPreview` di tabel tersendiri, tidak mengirimkannya lewat SSE, dan menyajikannya lewat endpoint aplikasi saat analis membuka sebuah bukti.
+
+Semua perubahan bersifat menambah. `IAgentClient` tidak berubah.
+
 ## Use case
 
 1. **Investigator UMA.** Satu agent menyelidiki satu saham yang harga atau volumenya menyimpang: cek berita dan aksi korporasi, gali broker dan arus asing bila perlu, nilai apakah bukti cukup, lalu susun draf memo. Agent berhenti di `approval_required` sampai analis memutuskan setuju, revisi, atau tolak. Interaksi sinkron.
 2. **Deteksi akumulasi-distribusi terpola.** Orchestrator membagi kandidat ke worker saham, worker broker, dan worker kepemilikan, lalu mengikuti jejak baru sampai batas kedalaman. Berjalan sebagai job asinkron. Dikerjakan setelah use case 1 selesai di tiga solusi.
 
 Deteksi awal (saham mana yang menyimpang) adalah kode biasa dengan ambang batas, bukan agent.
+
+## Rincian use case 2
+
+### Alur
+
+1. **Penyaringan awal (kode biasa di aplikasi, bukan agent).** Menghasilkan daftar kandidat saham dari MCP IDX dengan ambang batas di konfigurasi.
+2. **Orchestrator** menerima kandidat, membagi tugas ke worker, menerima temuan, lalu memutuskan jejak mana yang diikuti.
+3. **Worker saham** memeriksa pola harga, volume, dan konsentrasi broker pada satu saham. Logikanya memakai ulang Investigator UMA tanpa langkah memo.
+4. **Worker broker** memeriksa di saham lain mana saja sebuah broker menunjukkan pola serupa. Saham baru yang ditemukan menjadi jejak baru.
+5. **Worker kepemilikan** memeriksa apakah saham-saham dalam satu klaster punya pemegang saham yang sama atau terafiliasi.
+6. Orchestrator menggabungkan temuan menjadi klaster, menyusun laporan, lalu berhenti di `approval_required`.
+
+### Tool per peran
+
+Nama tool mengikuti `contracts/mcp-tools.md`. Jika nama di server berbeda, pakai yang di server dan perbarui tabel ini.
+
+| Peran | Tool MCP IDX |
+|---|---|
+| Penyaringan awal | `idx_bandar_screen`, `idx_screen`, `idx_history` |
+| Worker saham | `idx_history`, `idx_technical`, `idx_broker`, `idx_bandar`, `idx_foreign`, `idx_news`, `idx_corporate_actions` |
+| Worker broker | `idx_bandar_broker`, `idx_market_brokers`, `idx_members`, `idx_broker` |
+| Worker kepemilikan | `idx_ownership_ticker`, `idx_ownership_graph`, `idx_ownership_entity`, `idx_ownership_changes` |
+| Orchestrator | tidak memanggil tool data, hanya mendelegasikan dan menilai |
+
+### Ambang dan batas
+
+Ini nilai awal untuk demo, bukan standar pengawasan. Semua dibaca dari konfigurasi `PatternDetection` dan ditegakkan di kode, bukan hanya di prompt.
+
+| Parameter | Nilai awal |
+|---|---|
+| Jendela pengamatan | 10 hari bursa |
+| Perubahan harga minimum dalam jendela | 15% (naik atau turun) |
+| Porsi nilai beli bersih tiga broker teratas | minimal 40% |
+| Kandidat maksimum per job | 10 saham |
+| Kedalaman rantai (saham, broker, saham lain) | 2 |
+| Saham maksimum per job, termasuk jejak baru | 15 |
+| Broker yang diikuti per saham | 3 |
+| Langkah maksimum per worker | 12 |
+| Tool call maksimum per job | 150 |
+| Durasi maksimum per job | 20 menit |
+
+Saat batas tercapai, job tidak gagal. Orchestrator menyusun laporan dari temuan yang ada dan mencatat batas mana yang tercapai.
+
+Orchestrator tidak mengikuti broker yang aktif di lebih dari 30% saham kandidat, kecuali porsi beli bersihnya di saham itu melewati ambang penyaringan. Setiap jejak yang tidak diikuti dicatat beserta alasannya.
+
+### Struktur laporan
+
+1. Ringkasan: jumlah klaster, saham, dan broker yang terlibat, serta periode pengamatan.
+2. Per klaster: saham, broker dominan, kronologi akumulasi dan distribusi, serta keterkaitan kepemilikan bila ada.
+3. Bukti: setiap pernyataan merujuk ke tool call yang mendasarinya.
+4. Penjelasan alternatif yang wajar: berita, aksi korporasi, atau alasan lain yang ditemukan.
+5. Jejak yang tidak diikuti dan batas yang tercapai.
+6. Keterbatasan data: broker summary hanya sepuluh besar per sisi, harga tertunda, kepemilikan bulanan di atas 1%.
+7. Usulan tindak lanjut untuk analis.
+
+Laporan memakai bahasa indikasi. Tidak boleh ada kalimat yang menyimpulkan manipulasi atau pelanggaran.
 
 ## Tahapan
 
@@ -149,9 +235,141 @@ Selesai jika: provider `adk` berjalan dari browser, approval menjeda dan melanju
 
 a. Buat contract test abstrak yang dijalankan terhadap keempat adapter: validasi skema, urutan `sequence`, pasangan tool call, jeda dan lanjut approval, penolakan, pembatalan, dan batas langkah. Test terhadap agent sungguhan diberi kategori `Live`. Tulis `contracts/COMPATIBILITY.md`.
 
-b. Tulis `contracts/asd-pattern-detection.md`, lalu bangun use case 2 di satu solusi dulu. Tambahkan field opsional `agentName` pada event. Di aplikasi: job di background service, halaman daftar job, dan halaman detail dengan progres per worker.
+b. **Dibatalkan 2026-11-25, digantikan Tahap 13 sampai 15.** Teks aslinya: Tulis `contracts/asd-pattern-detection.md`, lalu bangun use case 2 di satu solusi dulu. Tambahkan field opsional `agentName` pada event. Di aplikasi: job di background service, halaman daftar job, dan halaman detail dengan progres per worker.
 
 Selesai jika: contract test lulus atau setiap kegagalan dijelaskan di `COMPATIBILITY.md`, berpindah solusi hanya butuh mengganti `Agent:Provider`, dan job use case 2 tetap berjalan setelah browser ditutup.
+
+Untuk 6a, kriteria contract test dan berpindah solusi sudah terpenuhi. Kriteria job use case 2 pindah ke Tahap 13.
+
+## Tahapan lanjutan
+
+### Tahap 7: fondasi untuk Bagian IV
+
+a. Autentikasi sederhana dengan cookie: halaman login dan tiga akun contoh dari konfigurasi (dua analis, satu supervisor). `DecidedBy` diambil dari identitas login, bukan dari isian bebas. Hapus isian nama dan penyimpanannya di `localStorage`. Ini autentikasi untuk demo; tulis catatan itu di kode dan di halaman login.
+
+b. Tutup celah konkurensi di `DecideAsync` dengan concurrency token (`rowversion` pada `InvestigationCase`) atau update bersyarat. Analis kedua mendapat pesan bahwa kasus sudah diputuskan, dan run tidak boleh berakhir dengan `error internal`. Tambahkan test yang menjalankan dua keputusan bersamaan.
+
+c. Jadikan status kasus sebuah state machine eksplisit di satu file: daftar status, transisi yang sah, dan penolakan untuk transisi lain.
+
+d. Kurangi tiga query per event di `RunPump.PersistAsync`. Ukur waktu per event sebelum dan sesudah, lalu catat hasilnya di `docs/NOTES-PERSIST.md` sebagai bahan Bab 10.
+
+e. Ganti halaman error bawaan template dengan halaman error berbahasa Indonesia.
+
+Selesai jika: keputusan approval mencatat pengguna yang login, test konkurensi lulus, transisi status tidak sah ditolak, dan catatan pengukuran tertulis.
+
+### Tahap 8: evolusi kontrak untuk progres dan bukti
+
+Ini contoh negosiasi event untuk Bab 11 butir 9, jadi prosesnya ikut didokumentasikan.
+
+a. Tulis `contracts/CHANGE-001-step-and-evidence.md`: kebutuhan front end, alternatif tanpa perubahan kontrak dan kenapa tidak cukup, usulan perubahan, dampak ke tiap solusi, dan cara menjaga kompatibilitas ke belakang.
+
+b. Perbarui `events.schema.json` dan `asd-investigator-uma.md`: event `step_started` dengan lima tahap ASD, serta field `source` dan `resultPreview` di `tool_call_finished`.
+
+c. Terapkan di `FakeAgentClient`, lalu di MAF, LangGraph, dan ADK. Perbarui `EVENT-MAPPING.md` tiap solusi.
+
+d. Aplikasi menyimpan `resultPreview` di tabel tersendiri dan tidak meneruskannya lewat SSE. Tambahkan endpoint aplikasi untuk mengambil pratinjau satu tool call.
+
+e. Perluas contract test: `step_started` muncul berurutan dan tidak mundur, `source` terisi untuk tool MCP, dan `resultPreview` tidak melebihi 8 KB.
+
+Selesai jika: contract test lama dan baru lulus untuk keempat adapter, atau setiap kegagalan dijelaskan di `COMPATIBILITY.md`.
+
+### Tahap 9: transport (Bab 10)
+
+a. Satu antarmuka transport di JavaScript dengan tiga implementasi di file terpisah: SSE, polling ke `events.json?after=`, dan SignalR. Halaman investigasi memilih transport lewat konfigurasi dan parameter `?transport=`.
+
+b. SignalR: hub, grup per kasus, dan menyambung kembali dari `sequence` terakhir. Sumbernya tetap `EventBroadcaster`.
+
+c. Endpoint SSE aplikasi mengirim ping berkala saat menunggu, field `retry:`, dan header `X-Accel-Buffering: no`. Tulis `docs/PROXY.md` berisi contoh konfigurasi untuk IIS, nginx, dan Azure App Service.
+
+d. Contoh "sebelum": endpoint klasik `POST /Lab/Sync` yang menunggu agent selesai lalu mengembalikan view, untuk memperagakan halaman beku dan timeout.
+
+e. Halaman `/Lab/Transport`: dua panel untuk kasus yang sama, kiri SSE dan kanan polling, dengan penghitung jumlah request, jeda rata-rata, dan pilihan interval polling.
+
+f. Tegaskan di antarmuka bahwa menutup tab tidak menghentikan investigasi.
+
+Selesai jika: investigasi yang sama berjalan dengan ketiga transport tanpa kehilangan atau menggandakan event, menyambung kembali bekerja di ketiganya, dan halaman pembanding menunjukkan perbedaan jumlah request.
+
+### Tahap 10: pola UI (Bab 11)
+
+a. Pecah `Details.cshtml` dan `investigation.js` menjadi satu partial view dan satu modul JavaScript per pola: narasi, indikator berpikir, tool call, progres langkah, bukti, tombol stop, banner error, dan kartu approval. Halaman investigasi merangkai semuanya.
+
+b. Indikator berpikir: muncul jika tidak ada event selama N detik saat run aktif, dengan teks yang berubah setelah jeda lebih panjang.
+
+c. Label tool: peta nama tool ke kalimat seperti "Sedang memeriksa broker summary…", dengan nama teknis tetap bisa dilihat.
+
+d. Progres langkah: daftar lima tahap ASD yang digerakkan oleh `step_started`.
+
+e. Bukti: dari sebuah temuan di memo, analis bisa membuka tool call yang mendasarinya, melihat `source`, waktu data, dan pratinjau data mentah.
+
+f. Error: pesan untuk error yang tidak bisa diulang menyertakan langkah berikutnya. Tombol stop menjelaskan bahwa data yang sudah masuk tetap tersimpan.
+
+g. Halaman `/Lab/Patterns`: satu bagian per pola, masing-masing dengan tombol yang memutar skenario fake untuk pola itu saja. Tambahkan skenario fake `silent_30s` untuk agent yang diam lama.
+
+h. Tulis `docs/PATTERNS.md`: tabel pola, event yang dibutuhkan, partial view, modul JavaScript, dan implikasi ke backend.
+
+Selesai jika: halaman investigasi tampil dan berperilaku sama seperti sebelum dipecah, setiap pola bisa diperagakan sendiri di `/Lab/Patterns`, dan `docs/PATTERNS.md` lengkap.
+
+### Tahap 11: approval (Bab 12)
+
+a. Putaran revisi: pastikan keputusan revisi menghasilkan memo baru yang kembali ke approval, dan riwayat versi memo terlihat.
+
+b. Halaman antrean approval: kasus yang menunggu keputusan, diurutkan dari yang paling lama, dengan jumlah dan lama menunggu.
+
+c. Pengambilan kasus: analis mengambil kasus sebelum memutuskan, analis lain melihat siapa yang sedang memegangnya, dan supervisor bisa mengalihkan. Pengambilan kedaluwarsa sendiri setelah tidak aktif.
+
+d. Kedaluwarsa approval oleh aplikasi: batas waktu dari konfigurasi, penanda "hampir kedaluwarsa" di antrean, dan saat lewat batas aplikasi memanggil pembatalan lalu mencatat alasannya.
+
+e. Halaman audit per kasus: satu garis waktu yang menggabungkan event agent dan keputusan analis, dengan ekspor ke JSON.
+
+f. Halaman `/Lab/Approval`: dua panel yang saling terhubung, sisi agent yang menunggu dan sisi analis yang memutuskan.
+
+g. Tulis `docs/APPROVAL-STATES.md` berisi diagram state machine dalam Mermaid, yang cocok dengan kode di Tahap 7c.
+
+Selesai jika: dua pengguna berbeda bisa memperagakan pengambilan dan pengalihan kasus, approval yang lewat batas waktu berakhir dengan status yang jelas, dan garis waktu audit menjawab siapa memutuskan apa dan kapan.
+
+### Tahap 12: durabilitas (Bab 13)
+
+a. Pisahkan akses data ke repository (`ICaseRepository`, `IEventRepository`, `IApprovalRepository`) dan pakai di `InvestigationService` dan `RunPump`.
+
+b. Hasilkan `docs/schema.sql` dengan `dotnet ef migrations script` dan `docs/ERD.md` dalam Mermaid.
+
+c. Resume setelah restart: pertahankan perilaku sekarang (run yang menunggu approval dilanjutkan, run yang sedang streaming ditutup), tetapi ganti `error internal` dengan kode error yang jelas dan bisa diulang, serta tawarkan jalankan ulang. Tulis `docs/RESTART.md`: tabel perilaku per provider dan alasan desainnya.
+
+d. Retensi: kebijakan umur data dari konfigurasi, background service pembersih untuk tabel event dan pratinjau, pemadatan event `token` menjadi teks utuh setelah run selesai, dan pembersihan `App_Data/maf-runs`. Dokumentasikan pembersihan database service Python.
+
+Selesai jika: tidak ada akses `DbContext` langsung di luar repository, skrip DDL dan ERD cocok dengan migrasi, restart di tengah streaming menghasilkan pesan yang bisa ditindaklanjuti, dan pembersih teruji dengan data berumur buatan.
+
+### Tahap 13: use case 2 di aplikasi, dengan agent tiruan
+
+a. Tulis `contracts/asd-pattern-detection.md` dari bagian "Rincian use case 2". Tulis `contracts/CHANGE-002-multi-agent.md`, lalu perbarui `events.schema.json` dan `agent-service-api.md`.
+
+b. Penyaringan awal sebagai service C# biasa dengan unit test.
+
+c. Perluas `FakeAgentClient`: orchestrator, tiga worker yang berjalan berselang, satu jejak baru, lalu approval laporan.
+
+d. Halaman daftar job dengan status berjalan, halaman detail dengan satu panel per worker, pembatalan job, dan membuka kembali hasil. Pakai `RunPump` dan repository yang sudah ada.
+
+e. Notifikasi selesai: penanda di navigasi dan pemberitahuan lewat SignalR untuk pengguna yang memulai job.
+
+Selesai jika: dengan provider `fake` sebuah job berjalan sampai approval lalu `done`, job tetap berjalan setelah browser ditutup, notifikasi muncul di halaman lain, dan semua test use case 1 tetap lulus.
+
+### Tahap 14: use case 2 di tiga solusi
+
+Kerjakan satu solusi per sesi, berurutan: MAF, LangGraph, lalu ADK. Untuk tiap solusi, baca dokumentasi resminya tentang pola multi-agent dan eksekusi paralel, bangun orchestrator dan tiga worker sesuai ASD dengan batas ditegakkan di kode, petakan aktivitas ke `agentName`, `worker_started`, dan `worker_finished`, lalu perbarui `EVENT-MAPPING.md`.
+
+Selesai jika, untuk tiap solusi: job berjalan dari penyaringan sampai laporan, panel tiap worker terisi tool call sungguhan, batas penelusuran menghasilkan laporan parsial dan bukan error, dan approval laporan bekerja. Untuk percobaan pertama, turunkan kandidat maksimum menjadi 3 saham.
+
+### Tahap 15: contract test use case 2 dan penutupan
+
+a. Contract test use case 2 untuk keempat adapter: setiap `worker_started` punya `worker_finished`, setiap event worker membawa `agentName`, batas dipatuhi, pembatalan menghentikan semua worker, dan job berakhir di approval.
+
+b. Perbarui `COMPATIBILITY.md` dengan perbandingan tiga solusi untuk kedua use case.
+
+c. Perbarui `docs/GAP-BAGIAN-IV.md` untuk terakhir kali. Setiap butir yang masih "Sebagian" atau "Belum" harus punya alasan.
+
+d. Tulis `docs/BOOK-INDEX.md`: untuk setiap butir outline Bab 10 sampai 13, file yang menjadi contohnya dan halaman yang memperagakannya.
+
+Selesai jika: contract test kedua use case lulus atau setiap kegagalan dijelaskan, dan `BOOK-INDEX.md` mencakup semua butir outline.
 
 ## Aturan
 
@@ -174,7 +392,18 @@ Selesai jika: contract test lulus atau setiap kegagalan dijelaskan di `COMPATIBI
 - [x] Tahap 3: solusi MAF
 - [x] Tahap 4: solusi LangGraph
 - [x] Tahap 5: solusi Google ADK
-- [ ] Tahap 6: contract test dan use case 2
+- [x] Tahap 6: contract test dan use case 2 (dipecah)
+  - [x] Tahap 6a: contract test, commit `d69b5f7`
+  - [ ] ~~Tahap 6b: use case 2 di satu solusi~~ dibatalkan 2026-11-25, digantikan Tahap 13 sampai 15
+- [ ] Tahap 7: fondasi untuk Bagian IV
+- [ ] Tahap 8: evolusi kontrak untuk progres dan bukti
+- [ ] Tahap 9: transport (Bab 10)
+- [ ] Tahap 10: pola UI (Bab 11)
+- [ ] Tahap 11: approval (Bab 12)
+- [ ] Tahap 12: durabilitas (Bab 13)
+- [ ] Tahap 13: use case 2 di aplikasi, dengan agent tiruan
+- [ ] Tahap 14: use case 2 di tiga solusi
+- [ ] Tahap 15: contract test use case 2 dan penutupan
 
 ## Catatan keputusan
 
@@ -218,4 +447,5 @@ Tambahkan satu baris per keputusan: tanggal, keputusan, alasan singkat.
 - 2026-11-25: Kode klien HTTP dipindah ke base class `HttpSseAgentClient`; `LangGraphAgentClient` dan `AdkAgentClient` hanya turunan tipis. `scripts/start-all.ps1` menyalakan MCP, LangGraph, dan ADK di jendela terpisah, dengan opsi `-Provider` untuk aplikasi web.
 - 2026-11-25: Contract test (Tahap 6a): satu kelas abstrak `AgentContractTests` untuk keempat adapter, model tiruan bersama dari `scenarios.json` (service Python lewat `AGENT_SCRIPT`), test `Live` di belakang `RUN_LIVE_TESTS=1`. Hasil di `contracts/COMPATIBILITY.md`.
 - 2026-11-25: Halaman Setting untuk memilih solusi agent saat aplikasi berjalan (diminta). `AgentClientRegistry` menyimpan keempat adapter dan membuatnya saat pertama dipakai; pilihan aktif disimpan di tabel `Settings`; `Agent:Provider` jadi nilai awal. Kasus memakai adapter yang tercatat di `InvestigationCase.Provider`, sehingga run yang sedang berjalan tidak ikut berpindah. Nama model hanya ditampilkan; mengganti model per solusi tidak termasuk karena butuh perubahan `agent-service-api.md`.
+- 2026-11-25: `CLAUDE-lanjutan.md` digabung ke file ini (diminta): bagian Tujuan tambahan, Keputusan kontrak, Rincian use case 2, dan Tahapan lanjutan (Tahap 7 sampai 15) disalin apa adanya; Tahap 6a ditandai selesai (commit `d69b5f7`); Tahap 6b dibatalkan dan digantikan Tahap 13 sampai 15. Perubahan kontrak di tabel Keputusan kontrak (`step_started`, `source`/`resultPreview`, `agentName`/`worker_started`/`worker_finished`/`useCase`) sudah disetujui untuk Tahap 8 dan 13.
 - 2026-11-24: Catatan keamanan: server Azure SQL punya aturan firewall `AllowAll-Experiment` (0.0.0.0–255.255.255.255). Belum diubah; sebaiknya dihapus dan diganti aturan per IP.
