@@ -9,7 +9,7 @@ using Surveillance.Web.Models;
 namespace Surveillance.Web.Controllers;
 
 [Route("investigations")]
-public class InvestigationController(InvestigationService investigations) : Controller
+public class InvestigationController(InvestigationService investigations, AgentSelection selection) : Controller
 {
     [HttpGet("")]
     public async Task<IActionResult> Index(CancellationToken ct)
@@ -18,6 +18,7 @@ public class InvestigationController(InvestigationService investigations) : Cont
         {
             Cases = await investigations.ListCasesAsync(ct),
             Form = new StartInvestigationForm(),
+            ActiveAgent = await selection.ActiveNameAsync(ct),
         };
         return View(model);
     }
@@ -28,7 +29,10 @@ public class InvestigationController(InvestigationService investigations) : Cont
     {
         if (!ModelState.IsValid)
         {
-            var model = new InvestigationIndexViewModel { Cases = await investigations.ListCasesAsync(ct), Form = form };
+            var model = new InvestigationIndexViewModel
+            {
+                Cases = await investigations.ListCasesAsync(ct), Form = form, ActiveAgent = await selection.ActiveNameAsync(ct),
+            };
             return View(nameof(Index), model);
         }
 

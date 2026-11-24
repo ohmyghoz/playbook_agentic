@@ -1,0 +1,60 @@
+@model SettingsViewModel
+@{
+    ViewData["Title"] = "Setting";
+    var saved = Model.Choices.FirstOrDefault(c => c.Key == Model.Saved);
+}
+
+<h1 class="h3 mb-1">Setting</h1>
+<p class="text-muted mb-4">Atur solusi agent yang dipakai aplikasi.</p>
+
+@if (saved is not null)
+{
+    <div class="alert alert-success" role="status">
+        Investigasi baru sekarang memakai <strong>@saved.Name</strong>.
+        @if (!saved.Ready)
+        {
+            <span>Solusi ini belum siap: @saved.Status</span>
+        }
+    </div>
+}
+
+<section class="card" aria-labelledby="agent-heading">
+    <div class="card-body">
+        <h2 id="agent-heading" class="h5">Solusi agent</h2>
+        <p class="small text-muted">
+            Pilihan ini berlaku untuk investigasi baru. Investigasi yang sedang berjalan atau menunggu
+            keputusan tetap memakai solusi yang memulainya.
+        </p>
+
+        <form asp-action="Agent" method="post">
+            <fieldset>
+                <legend class="visually-hidden">Pilih solusi agent</legend>
+                @foreach (var c in Model.Choices)
+                {
+                    <div class="agent-choice border rounded p-3 mb-2 @(c.Active ? "border-primary" : "")">
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="provider" id="provider-@c.Key"
+                                   value="@c.Key" checked="@c.Active" />
+                            <label class="form-check-label w-100" for="provider-@c.Key">
+                                <span class="d-flex flex-wrap align-items-center gap-2">
+                                    <strong>@c.Name</strong>
+                                    <code class="small">@c.Model</code>
+                                    @if (c.Active)
+                                    {
+                                        <span class="badge text-bg-primary">Dipakai sekarang</span>
+                                    }
+                                    <span class="status @(c.Ready ? "status-approved" : "status-failed") ms-auto">
+                                        @(c.Ready ? "Siap" : "Belum siap")
+                                    </span>
+                                </span>
+                                <span class="d-block small text-muted mt-1">@c.Description</span>
+                                <span class="d-block small mt-1 @(c.Ready ? "text-muted" : "text-danger")">@c.Status</span>
+                            </label>
+                        </div>
+                    </div>
+                }
+            </fieldset>
+            <button type="submit" class="btn btn-primary mt-2">Simpan pilihan</button>
+        </form>
+    </div>
+</section>

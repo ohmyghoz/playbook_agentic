@@ -8,6 +8,7 @@ public class SurveillanceDbContext(DbContextOptions<SurveillanceDbContext> optio
     public DbSet<InvestigationCase> Cases => Set<InvestigationCase>();
     public DbSet<AgentEventRecord> Events => Set<AgentEventRecord>();
     public DbSet<ApprovalDecisionRecord> Decisions => Set<ApprovalDecisionRecord>();
+    public DbSet<AppSetting> Settings => Set<AppSetting>();
 
     /// <summary>All timestamps are stored as UTC and read back with <see cref="DateTimeKind.Utc"/>.</summary>
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder) =>
@@ -36,6 +37,13 @@ public class SurveillanceDbContext(DbContextOptions<SurveillanceDbContext> optio
             e.Property(x => x.Type).HasMaxLength(32);
             e.HasIndex(x => new { x.RunId, x.Sequence }).IsUnique();
             e.HasIndex(x => new { x.CaseId, x.Sequence });
+        });
+
+        modelBuilder.Entity<AppSetting>(e =>
+        {
+            e.HasKey(x => x.Key);
+            e.Property(x => x.Key).HasMaxLength(64);
+            e.Property(x => x.Value).HasMaxLength(256);
         });
 
         modelBuilder.Entity<ApprovalDecisionRecord>(e =>

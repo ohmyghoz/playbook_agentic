@@ -15,7 +15,8 @@ builder.Services.AddDbContextFactory<SurveillanceDbContext>(options =>
         // Azure SQL serverless databases take a while to resume from auto-pause.
         sql => sql.EnableRetryOnFailure(maxRetryCount: 6, maxRetryDelay: TimeSpan.FromSeconds(10), errorNumbersToAdd: null)));
 
-builder.Services.AddAgentClient(builder.Configuration);
+builder.Services.AddAgentClients(builder.Configuration);
+builder.Services.AddSingleton<AgentSelection>();
 builder.Services.AddSingleton<EventBroadcaster>();
 builder.Services.AddSingleton<RunPump>();
 builder.Services.AddSingleton<InvestigationService>();

@@ -66,6 +66,25 @@ namespace Surveillance.Web.Data.Migrations
                     b.ToTable("Events");
                 });
 
+            modelBuilder.Entity("Surveillance.Web.Data.AppSetting", b =>
+                {
+                    b.Property<string>("Key")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Value")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.HasKey("Key");
+
+                    b.ToTable("Settings");
+                });
+
             modelBuilder.Entity("Surveillance.Web.Data.ApprovalDecisionRecord", b =>
                 {
                     b.Property<long>("Id")

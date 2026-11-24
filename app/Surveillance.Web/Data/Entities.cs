@@ -52,6 +52,14 @@ public class AgentEventRecord
     public DateTime ReceivedAt { get; set; }
 }
 
+/// <summary>An application setting changed from the settings page, such as the active agent solution.</summary>
+public class AppSetting
+{
+    public required string Key { get; set; }
+    public required string Value { get; set; }
+    public DateTime UpdatedAt { get; set; }
+}
+
 /// <summary>An analyst decision on an approval_required event.</summary>
 public class ApprovalDecisionRecord
 {

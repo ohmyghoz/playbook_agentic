@@ -10,6 +10,17 @@ public class InvestigationIndexViewModel
 {
     public required List<InvestigationCase> Cases { get; init; }
     public required StartInvestigationForm Form { get; init; }
+
+    /// <summary>The solution new investigations will use, for example "LangGraph (qwen3...)".</summary>
+    public required string ActiveAgent { get; init; }
+}
+
+public class SettingsViewModel
+{
+    public required List<AgentChoice> Choices { get; init; }
+
+    /// <summary>The provider key just saved, to confirm the change.</summary>
+    public string? Saved { get; init; }
 }
 
 public class InvestigationDetailsViewModel

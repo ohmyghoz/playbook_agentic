@@ -1,7 +1,6 @@
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Options;
 using Surveillance.Agents.Abstractions;
 using Surveillance.Web.Agents;
 using Surveillance.Web.Data;
@@ -33,11 +32,11 @@ public enum DecisionResult
 /// <see cref="IAgentClient"/>, never a concrete agent framework.
 /// </summary>
 public sealed class InvestigationService(
-    IAgentClient agent,
+    AgentClientRegistry agents,
+    AgentSelection selection,
     IDbContextFactory<SurveillanceDbContext> dbFactory,
     RunPump pump,
     EventBroadcaster broadcaster,
-    IOptions<AgentOptions> agentOptions,
     ILogger<InvestigationService> logger)
 {
     public async Task<Guid> StartAsync(StartInvestigation input, CancellationToken ct)
@@ -52,7 +51,7 @@ public sealed class InvestigationService(
             AnomalyDate = input.AnomalyDate,
             TriggerJson = JsonSerializer.Serialize(trigger, AgentJson.Options),
             Notes = string.IsNullOrWhiteSpace(input.Notes) ? null : input.Notes.Trim(),
-            Provider = agentOptions.Value.Provider,
+            Provider = await selection.GetActiveAsync(ct),
             Status = CaseStatus.Starting,
             CreatedAt = now,
             UpdatedAt = now,
@@ -68,19 +67,22 @@ public sealed class InvestigationService(
         string runId;
         try
         {
-            runId = await agent.StartAsync(request, ct);
+            runId = await agents.Get(@case.Provider).StartAsync(request, ct);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            logger.LogError(ex, "Agent failed to start case {CaseId}", @case.Id);
+            logger.LogError(ex, "Agent {Provider} failed to start case {CaseId}", @case.Provider, @case.Id);
             await SetRunIdAsync(@case.Id, $"failed-{@case.Id:N}");
-            await pump.RecordFailureAsync(@case.Id, $"failed-{@case.Id:N}", AgentErrorCode.McpUnavailable,
-                "Agent tidak bisa dimulai. Periksa koneksi ke server data pasar, lalu coba lagi.");
+            // InvalidOperationException: the chosen solution cannot be created (missing API key or URL).
+            var (code, message) = ex is InvalidOperationException
+                ? (AgentErrorCode.Internal, "Solusi agent yang dipilih belum siap. Periksa halaman Setting, lalu coba lagi.")
+                : (AgentErrorCode.McpUnavailable, "Agent tidak bisa dimulai. Periksa koneksi ke service agent dan server data pasar, lalu coba lagi.");
+            await pump.RecordFailureAsync(@case.Id, $"failed-{@case.Id:N}", code, message);
             return @case.Id;
         }
 
         await SetRunIdAsync(@case.Id, runId);
-        _ = pump.Start(@case.Id, runId);
+        _ = pump.Start(@case.Id, runId, @case.Provider);
         return @case.Id;
     }
 
@@ -131,7 +133,9 @@ public sealed class InvestigationService(
 
         try
         {
-            await agent.ResumeAsync(@case.RunId, new ApprovalDecision(approvalId, decision, decidedBy.Trim(), normalizedComment), ct);
+            // The case keeps the solution that started it, whatever the settings page says now.
+            await agents.Get(@case.Provider).ResumeAsync(@case.RunId,
+                new ApprovalDecision(approvalId, decision, decidedBy.Trim(), normalizedComment), ct);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -141,7 +145,7 @@ public sealed class InvestigationService(
             return DecisionResult.Accepted;
         }
 
-        _ = pump.Start(caseId, @case.RunId);
+        _ = pump.Start(caseId, @case.RunId, @case.Provider);
         return DecisionResult.Accepted;
     }
 
@@ -151,7 +155,7 @@ public sealed class InvestigationService(
         var @case = await db.Cases.SingleOrDefaultAsync(c => c.Id == caseId, ct);
         if (@case is { RunId: not null } && !@case.Status.IsTerminal())
         {
-            _ = pump.Stop(caseId, @case.RunId);
+            _ = pump.Stop(caseId, @case.RunId, @case.Provider);
         }
     }
 
@@ -227,11 +231,11 @@ public sealed class InvestigationService(
         await using var db = await dbFactory.CreateDbContextAsync(ct);
         var active = await db.Cases
             .Where(c => c.RunId != null && (c.Status == CaseStatus.Running || c.Status == CaseStatus.Starting))
-            .Select(c => new { c.Id, c.RunId })
+            .Select(c => new { c.Id, c.RunId, c.Provider })
             .ToListAsync(ct);
         foreach (var c in active)
         {
-            _ = pump.Start(c.Id, c.RunId!);
+            _ = pump.Start(c.Id, c.RunId!, c.Provider);
         }
     }
 

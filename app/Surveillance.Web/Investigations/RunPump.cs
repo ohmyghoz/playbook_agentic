@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using Microsoft.EntityFrameworkCore;
 using Surveillance.Agents.Abstractions;
+using Surveillance.Web.Agents;
 using Surveillance.Web.Data;
 
 namespace Surveillance.Web.Investigations;
@@ -8,10 +9,10 @@ namespace Surveillance.Web.Investigations;
 /// <summary>
 /// Reads a run's events from the agent and persists them, independent of any
 /// browser connection. One pump at a time per case; later requests queue
-/// behind the current one.
+/// behind the current one. Each case is read through the solution that started it.
 /// </summary>
 public sealed class RunPump(
-    IAgentClient agent,
+    AgentClientRegistry agents,
     IDbContextFactory<SurveillanceDbContext> dbFactory,
     EventBroadcaster broadcaster,
     ILogger<RunPump> logger)
@@ -19,13 +20,13 @@ public sealed class RunPump(
     private readonly ConcurrentDictionary<Guid, CaseRun> _runs = new();
 
     /// <summary>Streams the run until it pauses or ends.</summary>
-    public Task Start(Guid caseId, string runId)
+    public Task Start(Guid caseId, string runId, string provider)
     {
         var run = _runs.GetOrAdd(caseId, _ => new CaseRun());
         lock (run)
         {
             run.Tail = run.Tail.ContinueWith(
-                _ => PumpAsync(caseId, runId, run.Stop.Token), TaskScheduler.Default).Unwrap();
+                _ => PumpAsync(caseId, runId, provider, run.Stop.Token), TaskScheduler.Default).Unwrap();
             return run.Tail;
         }
     }
@@ -34,22 +35,22 @@ public sealed class RunPump(
     /// Stops the run: cancels the active stream, or, when the run is paused,
     /// opens a stream with a cancelled token so the agent ends it.
     /// </summary>
-    public Task Stop(Guid caseId, string runId)
+    public Task Stop(Guid caseId, string runId, string provider)
     {
         var run = _runs.GetOrAdd(caseId, _ => new CaseRun());
         run.Stop.Cancel();
-        return Start(caseId, runId);
+        return Start(caseId, runId, provider);
     }
 
     /// <summary>Completes when every queued pump for the case has finished.</summary>
     public Task WhenIdle(Guid caseId) =>
         _runs.TryGetValue(caseId, out var run) ? run.Tail : Task.CompletedTask;
 
-    private async Task PumpAsync(Guid caseId, string runId, CancellationToken stop)
+    private async Task PumpAsync(Guid caseId, string runId, string provider, CancellationToken stop)
     {
         try
         {
-            await foreach (var e in agent.StreamAsync(runId, stop))
+            await foreach (var e in agents.Get(provider).StreamAsync(runId, stop))
             {
                 await PersistAsync(caseId, e);
             }

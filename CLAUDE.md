@@ -25,7 +25,7 @@ Untuk setiap tahap:
 
 - Aplikasi hanya mengenal `IAgentClient` dan katalog event di `contracts/`.
 - Tiga adapter: `MafAgentClient` (in-process), `LangGraphAgentClient` dan `AdkAgentClient` (HTTP + SSE ke service Python). Satu `FakeAgentClient` untuk pengembangan tanpa model.
-- Adapter dipilih lewat konfigurasi `Agent:Provider`: `fake`, `maf`, `langgraph`, atau `adk`.
+- Adapter dipilih lewat konfigurasi `Agent:Provider`: `fake`, `maf`, `langgraph`, atau `adk`. Halaman Setting (`/settings`) bisa menggantinya saat aplikasi berjalan; pilihan disimpan di database dan berlaku untuk investigasi baru.
 - Semua agent memakai MCP IDX server yang sama.
 - Database milik aplikasi adalah sumber kebenaran untuk kasus, event, dan approval. State internal tiap framework hanya untuk melanjutkan eksekusi.
 - Pemetaan event bawaan framework ke katalog event dilakukan di sisi agent, bukan di controller atau view.
@@ -216,4 +216,6 @@ Tambahkan satu baris per keputusan: tanggal, keputusan, alasan singkat.
 - 2026-11-25: ADK `submit_memo` mendeklarasikan skema `Memo` tapi menerima dict mentah, supaya memo tidak sah tercatat sebagai `invalid_memo` dan tidak gagal di konversi ADK. Model Gemini diberi `retry_options` (2 kali coba ulang untuk 429/5xx), sama seperti MAF dan LangGraph.
 - 2026-11-25: `contract.py`, `instructions.py`, dan `summarizer.py` disalin dari LangGraph ke ADK (bukan paket bersama) supaya tiap service berdiri sendiri; test di kedua service menjaga instruksi tetap sama dengan ASD.
 - 2026-11-25: Kode klien HTTP dipindah ke base class `HttpSseAgentClient`; `LangGraphAgentClient` dan `AdkAgentClient` hanya turunan tipis. `scripts/start-all.ps1` menyalakan MCP, LangGraph, dan ADK di jendela terpisah, dengan opsi `-Provider` untuk aplikasi web.
+- 2026-11-25: Contract test (Tahap 6a): satu kelas abstrak `AgentContractTests` untuk keempat adapter, model tiruan bersama dari `scenarios.json` (service Python lewat `AGENT_SCRIPT`), test `Live` di belakang `RUN_LIVE_TESTS=1`. Hasil di `contracts/COMPATIBILITY.md`.
+- 2026-11-25: Halaman Setting untuk memilih solusi agent saat aplikasi berjalan (diminta). `AgentClientRegistry` menyimpan keempat adapter dan membuatnya saat pertama dipakai; pilihan aktif disimpan di tabel `Settings`; `Agent:Provider` jadi nilai awal. Kasus memakai adapter yang tercatat di `InvestigationCase.Provider`, sehingga run yang sedang berjalan tidak ikut berpindah. Nama model hanya ditampilkan; mengganti model per solusi tidak termasuk karena butuh perubahan `agent-service-api.md`.
 - 2026-11-24: Catatan keamanan: server Azure SQL punya aturan firewall `AllowAll-Experiment` (0.0.0.0–255.255.255.255). Belum diubah; sebaiknya dihapus dan diganti aturan per IP.
