@@ -23,3 +23,6 @@ __pycache__/
 *.sqlite3
 *.mdf
 *.ldf
+
+# Agent run state (serialized sessions)
+App_Data/

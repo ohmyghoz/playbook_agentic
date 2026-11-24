@@ -1,4 +1,8 @@
 <Solution>
+  <Folder Name="/agents/" />
+  <Folder Name="/agents/maf/">
+    <Project Path="agents/maf/Surveillance.Agents.Maf.csproj" />
+  </Folder>
   <Folder Name="/app/">
     <Project Path="app/Surveillance.Agents.Abstractions/Surveillance.Agents.Abstractions.csproj" />
     <Project Path="app/Surveillance.Web.Tests/Surveillance.Web.Tests.csproj" />

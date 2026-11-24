@@ -171,7 +171,7 @@ Selesai jika: contract test lulus atau setiap kegagalan dijelaskan di `COMPATIBI
 
 - [x] Tahap 1: MCP IDX server
 - [x] Tahap 2: aplikasi MVC dengan agent tiruan
-- [ ] Tahap 3: solusi MAF
+- [x] Tahap 3: solusi MAF
 - [ ] Tahap 4: solusi LangGraph
 - [ ] Tahap 5: solusi Google ADK
 - [ ] Tahap 6: contract test dan use case 2
@@ -197,4 +197,10 @@ Tambahkan satu baris per keputusan: tanggal, keputusan, alasan singkat.
 - 2026-11-24: Paket EF Core dan Mvc.Testing dikunci ke 10.0.15, karena versi 11 hanya untuk net11.
 - 2026-11-24: LocalDB tidak bisa start di mesin ini (SQL Server 2016 dan 2025): `misaligned log IOs`, masalah ukuran sektor disk NVMe di Windows 11. Instance `(localdb)\Surveillance` (17.0) tersisa dan tidak dipakai.
 - 2026-11-24: Database pengembangan memakai Azure SQL: server `ojk-agentik-sql-pthuo0`, database baru `Surveillance` (serverless GP_S_Gen5, auto-pause 60 menit). Login lewat Entra ID (`Authentication=Active Directory Default`, memakai sesi `az login`); akun pengguna dijadikan admin Entra server. Connection string tanpa password, tersimpan di user-secrets. EF Core memakai `EnableRetryOnFailure` karena database serverless perlu waktu untuk menyala.
+- 2026-11-24: Model Solusi 1 (MAF): `gpt-5-mini` lewat platform.openai, Chat Completions (bukan Responses) supaya riwayat ada di `AgentSession` yang bisa diserialisasi dan diuji dengan `IChatClient` tiruan.
+- 2026-11-24: Paket MAF: `Microsoft.Agents.AI.OpenAI` 1.28.0 dan `ModelContextProtocol` 2.4.0. Nama API dipastikan lewat compile karena repo GitHub MAF tidak bisa diakses; perilaku yang tidak terdokumentasi (approval saat streaming, resume dari session terserialisasi) dipastikan lewat test. Detail di `agents/maf/EVENT-MAPPING.md`.
+- 2026-11-24: Batas langkah MAF dihitung di function middleware, bukan `MaximumIterationsPerRequest`, karena batas bawaan itu direset setiap kali approval dilanjutkan. Revisi dikirim ke model sebagai approval ditolak dengan alasan berisi komentar analis.
+- 2026-11-24: Instruksi sistem bersama di ASD diperbarui setelah uji live MAF: menyebut `idx_stockbit_actions` secara eksplisit (model sebelumnya memilih `idx_corporate_actions` yang gagal) dan meminta satu kalimat narasi sebelum setiap tool (gpt-5-mini sebelumnya tidak menulis narasi sama sekali). LangGraph dan ADK memakai teks yang sama.
+- 2026-11-24: Batas langkah: panggilan paralel dalam satu giliran model yang melewati batas hanya diberi peringatan; `step_limit_exceeded` baru jika model meminta tool lagi di giliran berikutnya. Ditemukan saat uji live; berlaku juga untuk LangGraph dan ADK.
+- 2026-11-24: Setelah memo disetujui, adapter langsung memancarkan `done` tanpa meminta balasan penutup dari model. Teks model digabung sekitar 60 karakter per event `token`.
 - 2026-11-24: Catatan keamanan: server Azure SQL punya aturan firewall `AllowAll-Experiment` (0.0.0.0–255.255.255.255). Belum diubah; sebaiknya dihapus dan diganti aturan per IP.

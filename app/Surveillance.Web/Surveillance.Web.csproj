@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Surveillance.Agents.Abstractions\Surveillance.Agents.Abstractions.csproj" />
+    <ProjectReference Include="..\..\agents\maf\Surveillance.Agents.Maf.csproj" />
   </ItemGroup>
 
   <ItemGroup>

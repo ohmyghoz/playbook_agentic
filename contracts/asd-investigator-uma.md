@@ -265,7 +265,8 @@ Catatan analis: {notes}
 Langkah kerja:
 1. Panggil idx_stockbit_status. Jika logged_in=false, jangan pakai tool Stockbit.
 2. Ukur penyimpangan dengan idx_quote dan idx_history (period 3mo).
-3. Cari penjelasan wajar dengan idx_news (company_only true) dan aksi korporasi.
+3. Cari penjelasan wajar dengan idx_news (company_only true) dan idx_stockbit_actions.
+   Pakai idx_corporate_actions hanya jika logged_in=false.
 4. Jika belum ada penjelasan wajar, periksa idx_broker, idx_bandar, idx_foreign,
    dan idx_stockbit_movements.
 5. Panggil submit_memo dengan memo sesuai skema.
@@ -277,6 +278,8 @@ Aturan:
 - Jika tool gagal, catat di unavailableData dan lanjutkan.
 - Hasilmu adalah indikasi untuk ditelaah analis, bukan kesimpulan pelanggaran.
   Jangan memakai kata manipulasi, pelanggaran, atau pelaku.
+- Sebelum memanggil tool, tulis satu kalimat singkat tentang apa yang akan kamu
+  periksa dan apa yang sudah kamu temukan.
 - Tulis narasi dan memo dalam bahasa Indonesia, singkat dan lugas.
 - Saat analis meminta revisi, perbaiki memo sesuai komentarnya lalu panggil
   submit_memo lagi.
