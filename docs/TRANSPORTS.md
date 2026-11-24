@@ -29,6 +29,25 @@ Pilihan bawaan aplikasi ini adalah SSE. Alasannya:
 - SSE tidak butuh library;
 - menyambung kembali sudah ditangani browser.
 
+## Batas enam koneksi pada HTTP/1.1
+
+Pada HTTP/1.1, browser membuka paling banyak enam koneksi ke satu host. Setiap
+SSE memakai satu koneksi selama halaman terbuka. Bila enam tab investigasi
+(atau enam panel di satu halaman) memakai SSE, request ketujuh tidak pernah
+berangkat. Itu termasuk POST keputusan atau tombol Hentikan.
+
+Masalah ini ditemukan saat uji Tahap 10. Halaman `/lab/patterns` berisi
+delapan panel, dan tombol Hentikan diam tanpa pesan.
+
+Cara menghindarinya:
+
+- **HTTPS dengan HTTP/2 atau HTTP/3.** Semua stream berbagi satu koneksi, sehingga batas ini tidak berlaku. Kestrel dan Azure App Service memakai HTTP/2 untuk HTTPS secara bawaan.
+- **Polling** untuk halaman yang menampilkan banyak run sekaligus. `/lab/patterns` memakai polling tiap 1 detik.
+- **SignalR** dengan WebSocket. Koneksi WebSocket tidak memakai jatah enam koneksi HTTP itu.
+
+Pengembangan lokal lewat `http://127.0.0.1` memakai HTTP/1.1, jadi batas ini
+terasa di sana.
+
 ## Di mana kodenya
 
 | Bagian | File |

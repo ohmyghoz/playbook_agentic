@@ -1,0 +1,76 @@
+@{
+    ViewData["Title"] = "Lab: pola UI agent";
+    // pattern partial(s), title, explanation, scenario buttons (scenario, label)
+    var sections = new (string Key, string[] Partials, string Title, string Text, (string Scenario, string Label)[] Buttons)[]
+    {
+        ("narrative", ["_Narrative"], "Narasi mengalir",
+            "Event token disambung apa adanya. Teks dari giliran model yang baru dimulai di baris baru.",
+            [("happy", "Putar skenario")]),
+        ("thinking-indicator", ["_ThinkingIndicator"], "Indikator berpikir",
+            "Agent diam 30 detik setelah mulai. Indikator muncul setelah 4 detik tanpa event, lalu teksnya berubah setelah 15 detik. Tidak ada event khusus dari agent.",
+            [("silent_30s", "Putar skenario agent diam 30 detik")]),
+        ("tool-calls", ["_ToolCalls"], "Panggilan data dengan label ramah",
+            "Nama tool diterjemahkan menjadi kalimat seperti \"Sedang memeriksa broker summary…\". Nama teknis dan argumen tetap terlihat.",
+            [("happy", "Putar skenario")]),
+        ("step-progress", ["_StepProgress"], "Progres tahap",
+            "Daftar lima tahap ASD digerakkan oleh event step_started. Tahap yang dilompati ditandai.",
+            [("happy", "Putar skenario")]),
+        ("evidence", ["_ApprovalCard", "_Evidence"], "Bukti di balik temuan",
+            "Setelah draf memo muncul, pilih tautan bukti pada sebuah temuan. Panel menampilkan sumber, waktu data, dan data mentah yang diambil dari server saat itu juga.",
+            [("happy", "Putar skenario")]),
+        ("stop-button", ["_StopButton", "_ErrorBanner"], "Tombol hentikan",
+            "Agent lambat (3 detik per tool). Hentikan di tengah jalan: run berakhir dengan status dihentikan dan data yang sudah masuk tetap tersimpan.",
+            [("slow", "Putar skenario agent lambat")]),
+        ("error-banner", ["_ErrorBanner"], "Banner galat dengan langkah berikutnya",
+            "Galat yang bisa diulang menampilkan tombol mulai ulang. Galat yang tidak bisa diulang menyebut langkah berikutnya.",
+            [("model_error", "Galat model (bisa diulang)"), ("step_limit", "Batas langkah (tidak bisa diulang)")]),
+        ("approval-card", ["_ApprovalCard"], "Kartu approval",
+            "Draf memo dengan tiga keputusan. Komentar wajib untuk revisi dan tolak.",
+            [("happy", "Putar skenario")]),
+    };
+}
+
+<h1 class="h3">Pola UI agent</h1>
+<p style="max-width: 48rem">
+    Setiap bagian memakai satu partial view dan satu modul JavaScript yang sama dengan halaman investigasi,
+    lalu memutar skenario agent tiruan hanya untuk pola itu. Daftar pola dan file-nya ada di
+    <code>docs/PATTERNS.md</code>. Halaman ini memakai polling tiap 1 detik karena delapan koneksi SSE sekaligus
+    akan menghabiskan batas enam koneksi browser per server pada HTTP/1.1.
+</p>
+
+@Html.AntiForgeryToken()
+
+<div id="lab-patterns" data-start-url="@Url.Action("StartPattern")" data-hub-url="@Url.Content("~" + Surveillance.Web.Hubs.InvestigationHub.Path)">
+    @foreach (var s in sections)
+    {
+        <section class="card mb-4" id="pattern-@s.Key" aria-labelledby="pattern-@s.Key-title">
+            <div class="card-header">
+                <h2 id="pattern-@s.Key-title" class="h5 mb-0">@s.Title</h2>
+            </div>
+            <div class="card-body">
+                <p class="small text-muted">@s.Text</p>
+                <div class="d-flex flex-wrap gap-2 mb-3">
+                    @foreach (var b in s.Buttons)
+                    {
+                        <button type="button" class="btn btn-sm btn-primary" data-play-scenario="@b.Scenario">@b.Label</button>
+                    }
+                    <a class="btn btn-sm btn-link d-none" data-part-link="details" target="_blank">Buka sebagai halaman investigasi</a>
+                </div>
+                @* Polling, not SSE: eight open SSE streams would use up the browser's six HTTP/1.1
+                   connections per host and block every other request (docs/TRANSPORTS.md). *@
+                <div data-agent-ui-deferred data-mode="live" data-transport="polling" data-polling-interval="1000" data-terminal="false">
+                    <span data-part="status" class="status d-none"></span>
+                    @foreach (var partial in s.Partials)
+                    {
+                        <partial name="@("Patterns/" + partial)" model="Guid.Empty" />
+                    }
+                </div>
+            </div>
+        </section>
+    }
+</div>
+
+@section Scripts {
+    <partial name="Patterns/_AgentUiScripts" model="false" />
+    <script src="~/js/lab-patterns.js" asp-append-version="true"></script>
+}

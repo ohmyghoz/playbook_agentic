@@ -1,0 +1,20 @@
+@model bool
+@* Scripts for pages with [data-agent-ui] roots. Model: true when a root uses the SignalR transport. *@
+@if (Model)
+{
+    <script src="~/lib/microsoft-signalr/signalr.min.js"></script>
+}
+<script src="~/js/transports/transport.js" asp-append-version="true"></script>
+<script src="~/js/transports/transport-sse.js" asp-append-version="true"></script>
+<script src="~/js/transports/transport-polling.js" asp-append-version="true"></script>
+<script src="~/js/transports/transport-signalr.js" asp-append-version="true"></script>
+<script src="~/js/patterns/agent-ui.js" asp-append-version="true"></script>
+<script src="~/js/patterns/narrative.js" asp-append-version="true"></script>
+<script src="~/js/patterns/thinking-indicator.js" asp-append-version="true"></script>
+<script src="~/js/patterns/tool-calls.js" asp-append-version="true"></script>
+<script src="~/js/patterns/step-progress.js" asp-append-version="true"></script>
+<script src="~/js/patterns/evidence.js" asp-append-version="true"></script>
+<script src="~/js/patterns/stop-button.js" asp-append-version="true"></script>
+<script src="~/js/patterns/error-banner.js" asp-append-version="true"></script>
+<script src="~/js/patterns/approval-card.js" asp-append-version="true"></script>
+<script src="~/js/investigation.js" asp-append-version="true"></script>

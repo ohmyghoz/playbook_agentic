@@ -1,0 +1,18 @@
+@* Pattern: evidence panel. Opens from a memo finding: tool, source, data time, raw preview.
+   Module: wwwroot/js/patterns/evidence.js *@
+<section data-pattern="evidence" data-part="evidence" class="evidence card d-none mt-3" aria-label="Bukti" tabindex="-1">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <strong data-part="evidence-title">Bukti</strong>
+        <button type="button" class="btn-close" data-part="evidence-close" aria-label="Tutup bukti"></button>
+    </div>
+    <div class="card-body small">
+        <dl class="row mb-2">
+            <dt class="col-4">Tool</dt><dd class="col-8"><code data-part="evidence-tool"></code></dd>
+            <dt class="col-4">Sumber data</dt><dd class="col-8" data-part="evidence-source"></dd>
+            <dt class="col-4">Waktu data</dt><dd class="col-8" data-part="evidence-time"></dd>
+            <dt class="col-4">Ringkasan</dt><dd class="col-8" data-part="evidence-summary"></dd>
+        </dl>
+        <div class="text-muted mb-1">Data mentah (maksimum 8 KB)</div>
+        <pre data-part="evidence-preview" class="evidence-preview mb-0"></pre>
+    </div>
+</section>

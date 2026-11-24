@@ -1,0 +1,12 @@
+@model Guid
+@* Pattern: error banner with the next step, and the banner for a finished run. Module: wwwroot/js/patterns/error-banner.js *@
+<div data-pattern="error-banner">
+    <div data-part="error-banner" class="alert alert-danger d-none" role="alert">
+        <div data-part="error-message"></div>
+        <div data-part="error-next" class="small mt-1"></div>
+        <form data-part="retry-form" asp-controller="Investigation" asp-action="Retry" asp-route-id="@Model" method="post" class="d-none mt-2">
+            <button type="submit" class="btn btn-sm btn-outline-danger">Mulai ulang dengan data yang sama</button>
+        </form>
+    </div>
+    <div data-part="done-banner" class="alert d-none" role="status"></div>
+</div>

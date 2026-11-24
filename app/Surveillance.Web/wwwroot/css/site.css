@@ -59,3 +59,28 @@ body {
 .findings { padding-left: 1.1rem; }
 .findings li { margin-bottom: 0.4rem; }
 .disclaimer { color: #6c757d; font-style: italic; }
+
+/* Pattern: tool labels */
+.tool-label { font-size: 0.9rem; }
+.tool-args code { font-size: 0.78rem; }
+
+/* Pattern: thinking indicator */
+.thinking { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.5rem; color: #495057; }
+.thinking.d-none { display: none !important; }
+.thinking-dots { width: 1.6rem; height: 0.5rem; background: radial-gradient(circle, #6c757d 30%, transparent 32%) 0 0 / 0.55rem 0.5rem repeat-x; animation: pulse 1.2s ease-in-out infinite; flex: none; }
+@media (prefers-reduced-motion: reduce) { .thinking-dots { animation: none; } }
+
+/* Pattern: step progress */
+.steps { margin: 0 0 1rem; }
+.steps li { display: flex; align-items: center; gap: 0.5rem; padding: 0.15rem 0; color: #6c757d; font-size: 0.9rem; }
+.step-mark { width: 0.75rem; height: 0.75rem; border-radius: 50%; border: 2px solid #ced4da; flex: none; }
+.steps .step-active { color: #1e3a8a; font-weight: 600; }
+.steps .step-active .step-mark { border-color: #3b82f6; background: #3b82f6; }
+.steps .step-done { color: #212529; }
+.steps .step-done .step-mark { border-color: #16a34a; background: #16a34a; }
+.steps .step-skipped { text-decoration: line-through; }
+.steps .step-stopped .step-mark { border-color: #dc2626; background: #dc2626; }
+.step-state { color: #6c757d; font-weight: normal; }
+
+/* Pattern: evidence */
+.evidence-preview { max-height: 18rem; overflow: auto; font-size: 0.75rem; background: #f8f9fa; padding: 0.5rem; border-radius: 0.25rem; white-space: pre-wrap; overflow-wrap: anywhere; }

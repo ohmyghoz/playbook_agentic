@@ -79,6 +79,37 @@ public class LabController(InvestigationService investigations, IConfiguration c
         return RedirectToAction(nameof(Transport), new { caseId });
     }
 
+    /// <summary>One section per UI pattern; each plays a fake scenario through that pattern only.</summary>
+    [HttpGet("patterns")]
+    public IActionResult Patterns() => View();
+
+    /// <summary>Scripted scenarios the pattern page may start, chosen through the analyst notes.</summary>
+    private static readonly HashSet<string> PatternScenarios = ["happy", "silent_30s", "slow", "model_error", "step_limit"];
+
+    /// <summary>Starts a fake run for one pattern section and returns the URLs its UI root needs.</summary>
+    [HttpPost("patterns/start")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> StartPattern([FromForm] string scenario, CancellationToken ct)
+    {
+        if (!PatternScenarios.Contains(scenario))
+        {
+            return BadRequest(new { message = "Skenario tidak dikenal." });
+        }
+
+        var caseId = await investigations.StartAsync(LabInput("BBRI", scenario == "happy" ? null : $"scenario={scenario}"), ct);
+        return Ok(new
+        {
+            caseId,
+            eventsUrl = Url.Action("Events", "Investigation", new { id = caseId }),
+            eventsJsonUrl = Url.Action("EventsJson", "Investigation", new { id = caseId }),
+            approvalUrl = Url.Action("Approval", "Investigation", new { id = caseId }),
+            stopUrl = Url.Action("Stop", "Investigation", new { id = caseId }),
+            retryUrl = Url.Action("Retry", "Investigation", new { id = caseId }),
+            previewUrlTemplate = Url.Action("ToolPreview", "Investigation", new { id = caseId, toolCallId = "__call__" }),
+            detailsUrl = Url.Action("Details", "Investigation", new { id = caseId }),
+        });
+    }
+
     private static StartInvestigation LabInput(string symbol, string? notes) =>
         new(symbol, new DateOnly(2026, 11, 24), TriggerKind.Volume, "Volume di atas 1,1x rata-rata 3 bulan (demo Lab)",
             2.2, 235_635_300, 210_424_313, 1.12, notes);

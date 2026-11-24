@@ -33,7 +33,13 @@ public sealed class FakeAgentClient(IOptions<FakeAgentOptions> options) : IAgent
             _ => _options.Scenario,
         };
         var slow = request.Notes?.Contains("scenario=slow", StringComparison.Ordinal) == true;
-        _runs[runId] = new FakeRun(runId, request, scenario) { ToolDelayMs = slow ? 3_000 : _options.ToolDelayMs };
+        // scenario=silent_30s: the agent says nothing for 30 seconds after it starts (thinking indicator demo).
+        var silent = request.Notes?.Contains("scenario=silent_30s", StringComparison.Ordinal) == true;
+        _runs[runId] = new FakeRun(runId, request, scenario)
+        {
+            ToolDelayMs = slow ? 3_000 : _options.ToolDelayMs,
+            SilenceMs = silent ? 30_000 : 0,
+        };
         return Task.FromResult(runId);
     }
 
@@ -96,6 +102,15 @@ public sealed class FakeAgentClient(IOptions<FakeAgentOptions> options) : IAgent
             {
                 switch (step)
                 {
+                    case SilenceStep silence:
+                        if (await DelayAsync(silence.Milliseconds, ct))
+                        {
+                            foreach (var e in Cancel(run)) yield return e;
+                            yield break;
+                        }
+
+                        break;
+
                     case TextStep text:
                         foreach (var chunk in Chunk(text.Text))
                         {
@@ -300,6 +315,11 @@ public sealed class FakeAgentClient(IOptions<FakeAgentOptions> options) : IAgent
         var volume = t.Volume ?? 235_635_300;
         var change = t.PriceChangePct ?? 2.2;
 
+        if (run.SilenceMs > 0)
+        {
+            yield return new SilenceStep(run.SilenceMs);
+        }
+
         yield return new TextStep($"Memulai investigasi {s} untuk tanggal {r.AnomalyDate.ToString("d MMMM yyyy", Id)}. Pemicu: {t.Rule}.");
         yield return new ToolStep("idx_stockbit_status", new { }, "Sesi Stockbit aktif.");
         yield return new TextStep("Mengukur penyimpangan harga dan volume terhadap tiga bulan terakhir.");
@@ -452,6 +472,7 @@ public sealed class FakeAgentClient(IOptions<FakeAgentOptions> options) : IAgent
         public InvestigationRequest Request { get; } = request;
         public FakeScenario Scenario { get; } = scenario;
         public int ToolDelayMs { get; init; }
+        public int SilenceMs { get; init; }
         public SemaphoreSlim Gate { get; } = new(1, 1);
         public Queue<Step> Pending { get; } = new();
         public Dictionary<string, string> ToolCallIds { get; } = new();
@@ -469,6 +490,7 @@ public sealed class FakeAgentClient(IOptions<FakeAgentOptions> options) : IAgent
 
     private abstract record Step;
     private sealed record TextStep(string Text) : Step;
+    private sealed record SilenceStep(int Milliseconds) : Step;
     private sealed record ToolStep(string Name, object Arguments, string Summary, ToolError? Error = null) : Step;
     private sealed record ApprovalStep(Func<FakeRun, Memo> BuildMemo) : Step;
     private sealed record FinishSubmitStep(string Summary) : Step;

@@ -21,7 +21,10 @@ Diperbarui setelah Tahap 8: kontrak event untuk tahap alur kerja dan bukti data
 (`contracts/CHANGE-001-step-and-evidence.md`).
 
 Diperbarui setelah Tahap 9: tiga transport, ping SSE dan konfigurasi proxy, halaman
-`/lab/transport` dan `/lab/sync`. Butir yang berubah merujuk
+`/lab/transport` dan `/lab/sync`.
+
+Diperbarui setelah Tahap 10: pola UI dipecah per partial dan modul, indikator
+berpikir, label tool, progres tahap, panel bukti, dan `/lab/patterns`. Butir yang berubah merujuk
 ke nama file dan method, bukan nomor baris, karena nomor baris lama sudah bergeser.
 
 ## Ringkasan
@@ -29,7 +32,7 @@ ke nama file dan method, bukan nomor baris, karena nomor baris lama sudah berges
 | Bab | Ya | Sebagian | Belum |
 |---|---|---|---|
 | 10. Transport dan streaming | 8 | 0 | 0 |
-| 11. Pola UI/UX agentic | 5 | 5 | 1 |
+| 11. Pola UI/UX agentic | 11 | 0 | 0 |
 | 12. Human-in-the-loop | 4 | 4 | 0 |
 | 13. State dan durabilitas | 3 | 2 | 3 |
 
@@ -43,7 +46,6 @@ Kekuatan utama yang sudah ada:
 Kekurangan terbesar:
 
 - (Tahap 9) tiga transport (SSE, polling, SignalR) sudah ada; lihat `docs/TRANSPORTS.md`.
-- semua pola UI ada di satu view dan satu file JavaScript, belum dipecah per pola seperti format katalog Bab 11.
 - use case 2, retensi data, dan notifikasi belum ada.
 
 Butir yang **butuh perubahan kontrak event** ditandai 🔶 dan dirangkum di bagian akhir.
@@ -95,24 +97,22 @@ siarkan" yang layak dibahas.
 
 ## Bab 11: Pola UI/UX Agentic di View
 
-Format katalog Bab 11 meminta partial view dan JavaScript per pola. Saat ini
-semua pola ada di satu view (`Details.cshtml`) dan satu file
-(`investigation.js`). Isinya sudah per pola (fungsi terpisah per jenis event),
-jadi pemecahannya bersifat mekanis.
+Sejak Tahap 10, setiap pola punya satu partial view dan satu modul JavaScript
+(`docs/PATTERNS.md`), dan setiap pola bisa diperagakan sendiri di `/lab/patterns`.
 
 | Butir | Status | File relevan | Yang kurang |
 |---|---|---|---|
-| Skenario: agent diam 30 detik terasa rusak | **Sebagian** | Indikator koneksi `Details.cshtml:29`, `investigation.js:345-349`; titik berdenyut untuk tool berjalan (`site.css`, kelas `.tool-call.running .tool-icon`) | Saat model berpikir sebelum token pertama, atau di antara tool call, layar tidak menunjukkan apa-apa. Belum ada indikator "agent sedang berpikir" atau pengatur waktu "tidak ada kabar selama N detik". |
-| Teks mengalir + indikator berpikir (`token`) | **Sebagian** | `investigation.js:82-89` (narasi, baris baru per giliran model), penggabungan token sekitar 60 karakter di MAF dan service Python | Teks mengalir sudah ada. Indikator berpikir belum. Bisa dibuat di UI saja (muncul jika lebih dari N detik tanpa event), atau 🔶 dengan event baru seperti `model_call_started`. |
-| Visualisasi tool call (`tool_call_started`/`finished`) | **Ya** | `investigation.js:130-170` (`addToolCall`, `finishToolCall`), `Details.cshtml:69-72`, ringkasan bahasa Indonesia dari `ToolResultSummarizer` (MAF) dan `summarizer.py` (Python) | Yang tampil masih nama teknis (`idx_broker`), belum kalimat seperti "Sedang memeriksa broker summary…". Bisa dibuat dengan peta nama tool → label di JavaScript, tanpa mengubah kontrak. |
-| Progres multi-langkah | **Sebagian** | Kontrak: event `step_started` dengan lima tahap ASD (CHANGE-001), dipancarkan keempat adapter menurut `InvestigationSteps.cs` / `steps.py`; penghitung `x / 15` di `investigation.js` | Kontrak dan adapter sudah siap sejak Tahap 8. Tampilan daftar tahap di halaman investigasi menyusul di Tahap 10d. |
-| Tampilan bukti dan sumber data | **Sebagian** | `renderMemo` (`investigation.js`): temuan bertaut ke kartu tool call; kontrak: `source` dan `resultPreview` di `tool_call_finished` (CHANGE-001); aplikasi menyimpan pratinjau di tabel `ToolResultPreviews` (`ResultPreviewSplitter.cs`) dan menyajikannya lewat `GET /investigations/{id}/tools/{toolCallId}/preview` | Data sudah tersedia di backend sejak Tahap 8. Panel bukti yang menampilkan sumber, waktu data, dan pratinjau menyusul di Tahap 10e. |
-| Tombol stop | **Ya** | `Details.cshtml:32`, `investigation.js:315-326` | Belum ada konfirmasi sebelum menghentikan (sengaja tanpa dialog), dan belum ada pesan bahwa event yang sudah masuk tetap tersimpan sebelum tombol ditekan. Pesan itu baru muncul setelah run berhenti. |
-| Error yang manusiawi (`error`) | **Ya** | Banner `Details.cshtml:52-56`, `investigation.js:115-121`; pesan bahasa Indonesia dari adapter; tombol "Mulai ulang dengan data yang sama" untuk `retryable: true` (`InvestigationController.cs:39`); kegagalan per tool tampil merah dengan alasan | Error non-retryable belum memberi langkah berikutnya. Error HTTP aplikasi (404, 403, 500) sudah memakai halaman berbahasa Indonesia yang menjelaskan apa yang terjadi dan langkah berikutnya (`HomeController.Error`, `ErrorViewModel.ForStatus`). Respons JSON dari endpoint approval tidak diubah. |
-| Menyatukan: halaman investigasi UMA utuh | **Ya** | `Details.cshtml`, `investigation.js`, `History` (`InvestigationController.cs:56`) untuk putar ulang | Sudah diuji di browser untuk keempat provider. |
+| Skenario: agent diam 30 detik terasa rusak | **Ya** | Indikator berpikir (`_ThinkingIndicator.cshtml`, `thinking-indicator.js`); skenario fake `scenario=silent_30s`; `/lab/patterns` bagian Indikator berpikir | Diuji di browser: indikator muncul setelah 4 detik, lalu teksnya berubah setelah 15 detik dan menegaskan bahwa investigasi tetap berjalan bila halaman ditutup. |
+| Teks mengalir + indikator berpikir (`token`) | **Ya** | `_Narrative.cshtml` + `narrative.js`; `_ThinkingIndicator.cshtml` + `thinking-indicator.js`; penggabungan token sekitar 60 karakter di MAF dan service Python | Indikator berpikir tanpa perubahan kontrak, sesuai Keputusan kontrak. |
+| Visualisasi tool call (`tool_call_started`/`finished`) | **Ya** | `_ToolCalls.cshtml` + `tool-calls.js` (label ramah seperti "Sedang memeriksa broker summary…", nama teknis tetap terlihat), ringkasan dari `ToolResultSummarizer` dan `summarizer.py` | – |
+| Progres multi-langkah | **Ya** | `_StepProgress.cshtml` + `step-progress.js`, digerakkan `step_started` (CHANGE-001) | Tahap yang dilompati ditandai "dilewati", dan akhir run menandai tahap terakhir. |
+| Tampilan bukti dan sumber data | **Ya** | `_Evidence.cshtml` + `evidence.js`; tautan `data-evidence-call` dari `approval-card.js`; endpoint `GET /investigations/{id}/tools/{toolCallId}/preview` | Panel menampilkan tool, sumber data, waktu data dalam WIB, ringkasan, dan data mentah yang diambil saat panel dibuka. Diuji di browser. |
+| Tombol stop | **Ya** | `_StopButton.cshtml` + `stop-button.js` | Teks bantuan "Data yang sudah masuk tetap tersimpan" terlihat sebelum tombol ditekan. Tombol hilang setelah run berakhir. |
+| Error yang manusiawi (`error`) | **Ya** | `_ErrorBanner.cshtml` + `error-banner.js`; halaman error HTTP berbahasa Indonesia (Tahap 7) | Galat yang tidak bisa diulang memberi langkah berikutnya per `code`. Galat yang bisa diulang diberi tombol mulai ulang. |
+| Menyatukan: halaman investigasi UMA utuh | **Ya** | `Views/Investigation/Details.cshtml` merangkai delapan partial; `agent-ui.js` sebagai host; `History` untuk putar ulang | Diuji di browser setelah dipecah: alur langsung sampai approval dan `done`, bukti, serta putar ulang. |
 | Menegosiasikan event tambahan dengan pembuat agent | **Ya** | `contracts/CHANGE-001-step-and-evidence.md` (kebutuhan, alternatif tanpa perubahan kontrak, usulan, dampak per solusi, kompatibilitas ke belakang), `events.schema.json`, `EVENT-MAPPING.md` per solusi, contract test `Steps_move_forward_and_mcp_results_carry_source_and_preview` | Contoh negosiasi tuntas dari kebutuhan sampai contract test lulus untuk keempat adapter. |
-| Format katalog: partial view + JavaScript per pola | **Belum** | – | Butuh pemecahan menjadi partial view (misalnya `_Narrative.cshtml`, `_ToolCalls.cshtml`, `_ApprovalCard.cshtml`, `_ErrorBanner.cshtml`) dan modul JavaScript per pola. |
-| Demo 11-1 sampai 11-6 (satu per pola) | **Sebagian** | Skenario fake: `FakeAgentOptions` (`Happy`, `ModelError`, `StepLimit`) dan skenario lewat catatan (`scenario=slow`, `scenario=step_limit`) di `FakeAgentClient.cs` | Semua pola bisa diperagakan dengan provider `fake`, tapi di satu halaman. Belum ada halaman atau skenario per pola. Skenario "diam 30 detik" belum ada di fake. |
+| Format katalog: partial view + JavaScript per pola | **Ya** | `Views/Shared/Patterns/_*.cshtml`, `wwwroot/js/patterns/*.js`, `docs/PATTERNS.md` (tabel pola, event, partial, modul, implikasi backend) | – |
+| Demo 11-1 sampai 11-6 (satu per pola) | **Ya** | `/lab/patterns` (`Views/Lab/Patterns.cshtml`, `wwwroot/js/lab-patterns.js`): delapan bagian, masing-masing memutar skenario fake untuk pola itu saja | Memakai polling tiap 1 detik karena batas enam koneksi HTTP/1.1 (`docs/TRANSPORTS.md`). |
 
 ## Bab 12: Human-in-the-Loop dan Approval Analis
 

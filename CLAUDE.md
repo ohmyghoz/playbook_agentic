@@ -398,7 +398,7 @@ Selesai jika: contract test kedua use case lulus atau setiap kegagalan dijelaska
 - [x] Tahap 7: fondasi untuk Bagian IV
 - [x] Tahap 8: evolusi kontrak untuk progres dan bukti
 - [x] Tahap 9: transport (Bab 10)
-- [ ] Tahap 10: pola UI (Bab 11)
+- [x] Tahap 10: pola UI (Bab 11)
 - [ ] Tahap 11: approval (Bab 12)
 - [ ] Tahap 12: durabilitas (Bab 13)
 - [ ] Tahap 13: use case 2 di aplikasi, dengan agent tiruan
@@ -462,4 +462,6 @@ Tambahkan satu baris per keputusan: tanggal, keputusan, alasan singkat.
 - 2026-11-25: Tahap 9: SignalR memakai grup per kasus dan `JoinCase(caseId, after)` yang bergabung ke grup dulu lalu membaca database, sehingga tidak ada event yang jatuh di antaranya; event live dikirim `InvestigationHubRelay` dari `EventBroadcaster.SubscribeAll`. Klien `@microsoft/signalr` 10.0.11 disalin ke `wwwroot/lib/microsoft-signalr` (tanpa npm di proyek) dan hanya dimuat untuk `?transport=signalr`. Test .NET memakai `Microsoft.AspNetCore.SignalR.Client` 10.0.15 dengan long polling karena TestServer.
 - 2026-11-25: Tahap 9: endpoint SSE langsung mengirim satu `ping` saat koneksi dibuka. Ditemukan saat uji browser: tanpa itu respons belum mulai selama run menunggu approval, `EventSource.onopen` tidak terpanggil, dan status koneksi tetap "terputus".
 - 2026-11-25: Tahap 9: `/lab/sync` memakai kebijakan request timeout `lab-sync` (`Lab:SyncTimeoutSeconds`, bawaan 20) supaya test bisa memakai 2 detik. Batas waktu ini tidak berlaku saat debugger terpasang. Halaman `/lab` dijaga `LabAvailableFilter` (404 bila solusi aktif bukan fake).
+- 2026-11-25: Tahap 10: pola UI dipasang lewat host `agent-ui.js`; setiap pola (`wwwroot/js/patterns/*.js`) mendaftar dengan `AgentUi.register` dan mencari elemennya lewat `data-part` di dalam root `[data-agent-ui]`, bukan `id` global, supaya satu halaman bisa memuat banyak root (`/lab/patterns`). Pola saling terhubung hanya lewat atribut DOM (misalnya `data-evidence-call`). Tanpa bundler; skrip dimuat lewat partial `_AgentUiScripts.cshtml`.
+- 2026-11-25: Tahap 10: `/lab/patterns` memakai polling tiap 1 detik. Ditemukan saat uji browser: delapan koneksi SSE menghabiskan batas enam koneksi HTTP/1.1 per host, sehingga POST Hentikan tidak pernah terkirim. Dicatat di `docs/TRANSPORTS.md`. Skenario fake baru `scenario=silent_30s`.
 - 2026-11-24: Catatan keamanan: server Azure SQL punya aturan firewall `AllowAll-Experiment` (0.0.0.0–255.255.255.255). Belum diubah; sebaiknya dihapus dan diganti aturan per IP.
