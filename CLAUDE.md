@@ -1,0 +1,186 @@
+# Proyek: solusi agentic AI pengawasan pasar modal
+
+## Tujuan
+
+Satu aplikasi .NET MVC yang bisa memakai tiga solusi agent secara bergantian tanpa mengubah controller atau view. Proyek ini menjadi contoh berjalan untuk playbook integrasi Agentic AI, jadi kejelasan dan keterbandingan antar-solusi lebih penting daripada fitur.
+
+Dua hal yang harus terbukti di akhir:
+
+1. Tiga solusi agent yang berbeda bisa diintegrasikan lewat satu kontrak.
+2. Front end bisa menangani interaksi agent (teks mengalir, progres tool, approval, stop, error, proses panjang) tanpa tahu solusi mana yang bekerja.
+
+## Cara memulai sesi
+
+Di awal setiap sesi, baca bagian "Status tahap" di bawah, lalu sebutkan ke saya tahap mana yang sedang berjalan dan apa langkah berikutnya. Jika saya menulis "lanjut", kerjakan tahap pertama yang belum selesai.
+
+Untuk setiap tahap:
+
+1. Baca dokumentasi resmi yang relevan lebih dulu.
+2. Tunjukkan rancangan singkat dan tunggu persetujuan saya.
+3. Tulis kode, jalankan build dan test sendiri, perbaiki sampai lulus.
+4. Periksa kriteria selesai satu per satu dan laporkan hasilnya.
+5. Perbarui "Status tahap" dan "Catatan keputusan" di file ini.
+
+## Arsitektur
+
+- Aplikasi hanya mengenal `IAgentClient` dan katalog event di `contracts/`.
+- Tiga adapter: `MafAgentClient` (in-process), `LangGraphAgentClient` dan `AdkAgentClient` (HTTP + SSE ke service Python). Satu `FakeAgentClient` untuk pengembangan tanpa model.
+- Adapter dipilih lewat konfigurasi `Agent:Provider`: `fake`, `maf`, `langgraph`, atau `adk`.
+- Semua agent memakai MCP IDX server yang sama.
+- Database milik aplikasi adalah sumber kebenaran untuk kasus, event, dan approval. State internal tiap framework hanya untuk melanjutkan eksekusi.
+- Pemetaan event bawaan framework ke katalog event dilakukan di sisi agent, bukan di controller atau view.
+
+| Komponen | Lokasi | Bahasa | Model | Port |
+|---|---|---|---|---|
+| MCP IDX server | binary `idx` | - | - | 8765 |
+| Aplikasi MVC | `app/Surveillance.Web` | C# | - | default Visual Studio |
+| Solusi 1: MAF | `agents/maf` | C# | GPT via platform.openai | di dalam aplikasi |
+| Solusi 2: LangGraph | `agents/langgraph` | Python | Qwen via OpenRouter | 8101 |
+| Solusi 3: Google ADK | `agents/adk` | Python | Gemini via AI Studio | 8102 |
+
+## Lingkungan
+
+- Sistem operasi: Windows, skrip dalam PowerShell. Jika ternyata berbeda, tanyakan ke saya dan perbarui bagian ini.
+- Sebelum Tahap 1, periksa versi: dotnet SDK, python, pip, node, npm, git, az, idx. Jangan memasang apa pun tanpa persetujuan saya.
+- MCP IDX: `idx mcp --http 127.0.0.1:8765`, endpoint `http://127.0.0.1:8765/mcp`. Pastikan flag dan path di `docs/mcp.md` repo github.com/fzn0x/idx.
+- Database: Azure SQL, connection string di user-secrets sebagai `ConnectionStrings:Default`. LocalDB boleh dipakai selama pengembangan.
+- Setiap service Python punya virtual environment sendiri di foldernya.
+
+Rahasia dan konfigurasi:
+
+| Nama | Disimpan di | Dipakai oleh |
+|---|---|---|
+| `OPENAI_API_KEY` | user-secrets | Solusi 1 |
+| `Agent:Maf:Model` | appsettings | Solusi 1 |
+| `OPENROUTER_API_KEY`, `MODEL_BASE_URL`, `MODEL_NAME` | `agents/langgraph/.env` | Solusi 2 |
+| `GOOGLE_API_KEY`, `MODEL_NAME` | `agents/adk/.env` | Solusi 3 |
+| `IDX_MCP_TOKEN` | environment variable | MCP IDX dan ketiga agent |
+
+Nama model belum ditentukan. Tanyakan ke saya saat pertama kali dibutuhkan, lalu catat di "Catatan keputusan". Model harus mendukung tool calling.
+
+## Struktur repositori
+
+```text
+CLAUDE.md
+contracts/
+  events.schema.json          katalog event, sumber kebenaran kontrak
+  mcp-tools.md                tool MCP IDX yang dipakai dan bentuk keluarannya
+  asd-investigator-uma.md     spesifikasi agent use case 1
+  asd-pattern-detection.md    spesifikasi agent use case 2
+  agent-service-api.md        kontrak HTTP service agent Python
+  COMPATIBILITY.md            hasil contract test per adapter
+app/
+  Surveillance.Web/
+  Surveillance.Web.Tests/
+agents/
+  maf/                        class library C#, berisi EVENT-MAPPING.md
+  langgraph/                  service FastAPI, berisi EVENT-MAPPING.md
+  adk/                        service FastAPI, berisi EVENT-MAPPING.md
+scripts/
+  start-mcp.ps1
+  start-all.ps1
+```
+
+## Kontrak
+
+Katalog event: `run_started`, `token`, `tool_call_started`, `tool_call_finished`, `approval_required`, `done`, `error`. Setiap event punya `runId`, `sequence` (naik tanpa lompatan), `timestamp`, `type`, dan `payload`.
+
+`IAgentClient` punya tiga operasi:
+
+```csharp
+Task<string> StartAsync(InvestigationRequest request, CancellationToken ct);
+IAsyncEnumerable<AgentEvent> StreamAsync(string runId, CancellationToken ct);
+Task ResumeAsync(string runId, ApprovalDecision decision, CancellationToken ct);
+```
+
+Kontrak HTTP service Python (sama untuk LangGraph dan ADK):
+
+```text
+POST /runs                  mulai, mengembalikan runId
+GET  /runs/{id}/events      SSE, event sudah dalam bentuk katalog
+POST /runs/{id}/resume      keputusan approval
+```
+
+## Use case
+
+1. **Investigator UMA.** Satu agent menyelidiki satu saham yang harga atau volumenya menyimpang: cek berita dan aksi korporasi, gali broker dan arus asing bila perlu, nilai apakah bukti cukup, lalu susun draf memo. Agent berhenti di `approval_required` sampai analis memutuskan setuju, revisi, atau tolak. Interaksi sinkron.
+2. **Deteksi akumulasi-distribusi terpola.** Orchestrator membagi kandidat ke worker saham, worker broker, dan worker kepemilikan, lalu mengikuti jejak baru sampai batas kedalaman. Berjalan sebagai job asinkron. Dikerjakan setelah use case 1 selesai di tiga solusi.
+
+Deteksi awal (saham mana yang menyimpang) adalah kode biasa dengan ambang batas, bukan agent.
+
+## Tahapan
+
+### Tahap 1: MCP IDX server
+
+Buat `scripts/start-mcp.ps1`. Coba tool MCP untuk satu saham, lalu tulis `contracts/mcp-tools.md` berisi tool yang relevan untuk investigasi UMA, parameternya, dan contoh bentuk keluarannya.
+
+Selesai jika: `idx stocks quote BBCA` menampilkan harga, server berjalan di port 8765, dan `mcp-tools.md` mencakup minimal quote, history, news, corporate actions, broker, bandar, dan foreign.
+
+### Tahap 2: aplikasi MVC dengan agent tiruan
+
+a. Tulis `contracts/events.schema.json` dan `contracts/asd-investigator-uma.md` (input, tool yang boleh dipakai, event, struktur memo, batas langkah, model error).
+
+b. Buat solusi .NET: MVC `Surveillance.Web` dan proyek test xUnit. Isi: `IAgentClient`, `AgentEvent`, `FakeAgentClient` yang memancarkan urutan event UMA yang realistis dan berhenti di approval, `InvestigationController` dengan endpoint SSE dan endpoint approval, serta view .cshtml dengan JavaScript biasa untuk teks mengalir, daftar tool call, kartu approval, tombol stop, dan tampilan error.
+
+c. Tambahkan EF Core: `InvestigationCase`, `AgentEventRecord`, `ApprovalDecision`. Simpan setiap event, sediakan halaman riwayat yang memutar ulang event, dan dukung menyambung kembali dari `sequence` terakhir.
+
+Selesai jika: dengan provider `fake` investigasi berjalan sampai approval lalu `done`, memuat ulang halaman tidak menghilangkan event, data tersimpan di database, dan tidak ada rujukan framework agent di folder Controllers.
+
+### Tahap 3: solusi MAF
+
+Baca dokumentasi Microsoft Agent Framework di Microsoft Learn: paket NuGet, agent dengan model OpenAI (bukan Azure OpenAI), tool MCP lewat HTTP, streaming, dan persetujuan manusia. Bangun agent Investigator UMA sesuai ASD, satu tool lokal `submit_memo` yang butuh persetujuan, dan `MafAgentClient`. Tulis `agents/maf/EVENT-MAPPING.md`.
+
+Selesai jika: provider `maf` menampilkan tool call sungguhan, approval menjeda dan melanjutkan, penolakan tercatat benar, dan agent berhenti di batas langkah.
+
+### Tahap 4: solusi LangGraph
+
+Baca dokumentasi LangGraph dan LangChain: StateGraph, checkpointer, interrupt, streaming, adapter MCP. Bangun graph Investigator UMA dengan interrupt sebelum memo, checkpointer SQLite, model lewat endpoint kompatibel OpenAI (default `https://openrouter.ai/api/v1`), dan service FastAPI di port 8101. Tulis `contracts/agent-service-api.md`, `LangGraphAgentClient`, dan `agents/langgraph/EVENT-MAPPING.md`.
+
+Selesai jika: provider `langgraph` berjalan dari browser, approval menjeda dan melanjutkan, dan investigasi bertahan saat service dimatikan lalu dinyalakan di tengah jeda approval.
+
+### Tahap 5: solusi Google ADK
+
+Baca dokumentasi Google Agent Development Kit: agent dengan Gemini memakai API key AI Studio (bukan Vertex AI), tool MCP lewat HTTP, Runner, session service, bentuk Event, dan jeda untuk persetujuan. Bangun service FastAPI di port 8102 yang mengikuti `agent-service-api.md` tanpa perubahan, `AdkAgentClient`, dan `agents/adk/EVENT-MAPPING.md`. Pindahkan kode yang sama dengan adapter LangGraph ke base class `HttpSseAgentClient`. Buat `scripts/start-all.ps1`.
+
+Selesai jika: provider `adk` berjalan dari browser, approval menjeda dan melanjutkan, dan `agent-service-api.md` tidak berubah sejak Tahap 4.
+
+### Tahap 6: contract test dan use case 2
+
+a. Buat contract test abstrak yang dijalankan terhadap keempat adapter: validasi skema, urutan `sequence`, pasangan tool call, jeda dan lanjut approval, penolakan, pembatalan, dan batas langkah. Test terhadap agent sungguhan diberi kategori `Live`. Tulis `contracts/COMPATIBILITY.md`.
+
+b. Tulis `contracts/asd-pattern-detection.md`, lalu bangun use case 2 di satu solusi dulu. Tambahkan field opsional `agentName` pada event. Di aplikasi: job di background service, halaman daftar job, dan halaman detail dengan progres per worker.
+
+Selesai jika: contract test lulus atau setiap kegagalan dijelaskan di `COMPATIBILITY.md`, berpindah solusi hanya butuh mengganti `Agent:Provider`, dan job use case 2 tetap berjalan setelah browser ditutup.
+
+## Aturan
+
+- Jangan menebak nama kelas, method, atau paket MAF, LangGraph, atau Google ADK. Baca dokumentasi resminya, karena ketiganya cepat berubah.
+- Jangan mengubah `contracts/events.schema.json` atau `contracts/agent-service-api.md` tanpa persetujuan saya. Jika sebuah framework tidak cocok dengan kontrak, serap perbedaannya di adapter atau service, lalu catat di `EVENT-MAPPING.md`.
+- Controller dan view tidak boleh merujuk framework agent apa pun.
+- Tool MCP hanya membaca data. Agent tidak boleh punya tool yang menulis ke sistem luar.
+- Setiap agent punya batas langkah maksimum sesuai ASD.
+- Keluaran agent adalah indikasi untuk ditelaah analis, bukan kesimpulan pelanggaran. Gunakan bahasa itu di memo dan antarmuka.
+- Jangan menulis nilai API key atau connection string ke file mana pun, dan jangan menampilkannya di terminal. Pastikan `.env` masuk `.gitignore`.
+- Fitur MCP IDX yang butuh sesi Stockbit boleh dipakai (broker summary lengkap, aksi korporasi, pergerakan insider, orderbook). Login hanya dilakukan oleh saya lewat `idx stockbit login` di browser. Jangan pernah meminta, menampilkan, atau menyalin password, cookie, atau token Stockbit, dan jangan memakai sesi itu di alat lain. Periksa `idx_stockbit_status` sebelum memakai tool Stockbit. Jika sesi kedaluwarsa, minta saya login ulang.
+- Commit setiap kali satu tahap memenuhi kriteria selesai, dengan pesan yang menyebut nomor tahap.
+- Kode, nama file, dan komentar dalam bahasa Inggris. Teks antarmuka dan dokumen di `contracts/` dalam bahasa Indonesia.
+- Jika sebuah kriteria selesai tidak bisa dipenuhi, berhenti dan jelaskan alasannya. Jangan melonggarkan kriteria sendiri.
+
+## Status tahap
+
+- [x] Tahap 1: MCP IDX server
+- [ ] Tahap 2: aplikasi MVC dengan agent tiruan
+- [ ] Tahap 3: solusi MAF
+- [ ] Tahap 4: solusi LangGraph
+- [ ] Tahap 5: solusi Google ADK
+- [ ] Tahap 6: contract test dan use case 2
+
+## Catatan keputusan
+
+Tambahkan satu baris per keputusan: tanggal, keputusan, alasan singkat.
+
+- 2026-11-24: Versi lingkungan: dotnet 10.0.301, Python 3.13.14, pip 26.1.2, node 22.21.0, npm 10.9.4, git 2.54.0, az 2.87.0, idx 0.8.4.
+- 2026-11-24: Fitur MCP IDX yang butuh sesi Stockbit diizinkan (aturan diubah atas permintaan). Alasan: IPOT membalas HTTP 502, sedangkan Stockbit memberi broker summary lengkap (semua broker, angka tidak dibulatkan) dan aksi korporasi.
+- 2026-11-24: Aksi korporasi memakai `idx_stockbit_actions`; `idx_corporate_actions` (IPOT) hanya cadangan. Alasan: IPOT sedang gagal, dan data Stockbit lebih lengkap.
+- 2026-11-24: Contoh keluaran `idx_bandar` di `mcp-tools.md` diambil dari JSON Schema resmi (`idx schema bandar`), belum dari data nyata, karena tool ini hanya bisa memakai IPOT. Ganti dengan contoh nyata saat IPOT pulih. Jika bandar gagal, agent boleh menghitung sendiri dari `idx_broker` dengan label hitungan agent.
+- 2026-11-24: Field broker `kind` pada data nyata juga bernilai `foreign`, padahal nilai itu tidak ada di enum schema resmi. Adapter jangan memvalidasi `kind` secara ketat.
