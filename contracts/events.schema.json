@@ -1,0 +1,296 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://playbook-agentic.local/contracts/events.schema.json",
+  "title": "AgentEvent",
+  "description": "Katalog event agent. Satu event = satu objek. Bentuk payload ditentukan oleh type. Lihat asd-investigator-uma.md untuk aturan urutan.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["runId", "sequence", "timestamp", "type", "payload"],
+  "properties": {
+    "runId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "ID run yang dikembalikan StartAsync / POST /runs."
+    },
+    "sequence": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Mulai dari 1 per run, naik tepat 1 per event, berlanjut setelah resume."
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,7})?Z$",
+      "description": "Waktu event dibuat, RFC 3339 dalam UTC (akhiran Z)."
+    },
+    "type": {
+      "enum": [
+        "run_started",
+        "token",
+        "tool_call_started",
+        "tool_call_finished",
+        "approval_required",
+        "done",
+        "error"
+      ]
+    },
+    "payload": { "type": "object" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "type": { "const": "run_started" } } },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/RunStartedPayload" } } }
+    },
+    {
+      "if": { "properties": { "type": { "const": "token" } } },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/TokenPayload" } } }
+    },
+    {
+      "if": { "properties": { "type": { "const": "tool_call_started" } } },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/ToolCallStartedPayload" } } }
+    },
+    {
+      "if": { "properties": { "type": { "const": "tool_call_finished" } } },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/ToolCallFinishedPayload" } } }
+    },
+    {
+      "if": { "properties": { "type": { "const": "approval_required" } } },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/ApprovalRequiredPayload" } } }
+    },
+    {
+      "if": { "properties": { "type": { "const": "done" } } },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/DonePayload" } } }
+    },
+    {
+      "if": { "properties": { "type": { "const": "error" } } },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/ErrorPayload" } } }
+    }
+  ],
+  "$defs": {
+    "Date": {
+      "type": "string",
+      "format": "date",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+      "description": "Tanggal bursa YYYY-MM-DD (WIB)."
+    },
+    "Symbol": {
+      "type": "string",
+      "pattern": "^[A-Z]{4}$",
+      "description": "Kode saham BEI, empat huruf kapital, mis. BBCA."
+    },
+    "RunStartedPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["caseId", "symbol", "maxToolCalls"],
+      "properties": {
+        "caseId": { "type": "string", "minLength": 1 },
+        "symbol": { "$ref": "#/$defs/Symbol" },
+        "maxToolCalls": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "TokenPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["text"],
+      "properties": {
+        "text": { "type": "string", "minLength": 1, "description": "Potongan narasi agent; disambung apa adanya." }
+      }
+    },
+    "ToolCallStartedPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["toolCallId", "toolName", "arguments"],
+      "properties": {
+        "toolCallId": { "type": "string", "minLength": 1 },
+        "toolName": { "type": "string", "minLength": 1 },
+        "arguments": { "type": "object" }
+      }
+    },
+    "ToolCallFinishedPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["toolCallId", "toolName", "status", "summary"],
+      "properties": {
+        "toolCallId": { "type": "string", "minLength": 1 },
+        "toolName": { "type": "string", "minLength": 1 },
+        "status": { "enum": ["ok", "error"] },
+        "summary": {
+          "type": "string",
+          "maxLength": 500,
+          "description": "Ringkasan hasil untuk UI, bahasa Indonesia. Bukan keluaran mentah tool."
+        },
+        "error": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["code", "message"],
+          "properties": {
+            "code": { "type": "string", "minLength": 1, "description": "Kode dari sumber, mis. provider, blocked, not_found, timeout." },
+            "message": { "type": "string" }
+          }
+        }
+      },
+      "if": { "properties": { "status": { "const": "error" } } },
+      "then": { "required": ["error"] },
+      "else": { "not": { "required": ["error"] } }
+    },
+    "ApprovalRequiredPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["approvalId", "revision", "memo"],
+      "properties": {
+        "approvalId": { "type": "string", "minLength": 1 },
+        "revision": { "type": "integer", "minimum": 0, "description": "0 untuk draf pertama, naik 1 setiap keputusan revise." },
+        "memo": { "$ref": "#/$defs/Memo" }
+      }
+    },
+    "DonePayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["outcome", "toolCallsUsed"],
+      "properties": {
+        "outcome": { "enum": ["approved", "rejected", "cancelled"] },
+        "memo": { "$ref": "#/$defs/Memo", "description": "Memo terakhir; ada untuk approved dan rejected." },
+        "toolCallsUsed": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "ErrorPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "message", "retryable"],
+      "properties": {
+        "code": {
+          "enum": [
+            "step_limit_exceeded",
+            "revision_limit_exceeded",
+            "model_error",
+            "mcp_unavailable",
+            "invalid_input",
+            "internal"
+          ]
+        },
+        "message": { "type": "string", "minLength": 1, "description": "Pesan untuk ditampilkan, bahasa Indonesia." },
+        "retryable": { "type": "boolean" }
+      }
+    },
+    "Memo": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "symbol",
+        "anomalyDate",
+        "summary",
+        "anomaly",
+        "findings",
+        "unavailableData",
+        "evidenceLevel",
+        "evidenceRationale",
+        "recommendation",
+        "recommendationRationale",
+        "disclaimer"
+      ],
+      "properties": {
+        "symbol": { "$ref": "#/$defs/Symbol" },
+        "anomalyDate": { "$ref": "#/$defs/Date" },
+        "summary": { "type": "string", "minLength": 1, "description": "Ringkasan indikasi, 2-4 kalimat." },
+        "anomaly": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["description"],
+          "properties": {
+            "priceChangePct": { "type": ["number", "null"] },
+            "volume": { "type": ["integer", "null"], "minimum": 0 },
+            "avgVolume": { "type": ["number", "null"], "minimum": 0 },
+            "volumeRatio": { "type": ["number", "null"], "minimum": 0 },
+            "description": { "type": "string", "minLength": 1 }
+          }
+        },
+        "findings": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/Finding" }
+        },
+        "unavailableData": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["toolName", "reason"],
+            "properties": {
+              "toolName": { "type": "string", "minLength": 1 },
+              "reason": { "type": "string", "minLength": 1 }
+            }
+          }
+        },
+        "evidenceLevel": { "enum": ["strong", "moderate", "weak", "insufficient"] },
+        "evidenceRationale": { "type": "string", "minLength": 1 },
+        "recommendation": { "enum": ["escalate", "monitor", "close"] },
+        "recommendationRationale": { "type": "string", "minLength": 1 },
+        "disclaimer": { "const": "Indikasi untuk ditelaah analis, bukan kesimpulan pelanggaran." }
+      }
+    },
+    "Finding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["category", "statement", "evidence"],
+      "properties": {
+        "category": {
+          "enum": ["price_volume", "news", "corporate_action", "broker", "bandar", "foreign", "insider"]
+        },
+        "statement": { "type": "string", "minLength": 1 },
+        "evidence": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["toolCallId", "toolName", "detail"],
+            "properties": {
+              "toolCallId": { "type": "string", "minLength": 1 },
+              "toolName": { "type": "string", "minLength": 1 },
+              "detail": { "type": "string", "minLength": 1 }
+            }
+          }
+        }
+      }
+    },
+    "InvestigationRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["caseId", "symbol", "anomalyDate", "trigger"],
+      "properties": {
+        "caseId": { "type": "string", "minLength": 1 },
+        "symbol": { "$ref": "#/$defs/Symbol" },
+        "anomalyDate": { "$ref": "#/$defs/Date" },
+        "trigger": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "rule"],
+          "properties": {
+            "kind": { "enum": ["price", "volume", "both"] },
+            "priceChangePct": { "type": ["number", "null"] },
+            "volume": { "type": ["integer", "null"], "minimum": 0 },
+            "avgVolume": { "type": ["number", "null"], "minimum": 0 },
+            "volumeRatio": { "type": ["number", "null"], "minimum": 0 },
+            "rule": { "type": "string", "minLength": 1, "description": "Ambang yang terlampaui, mis. 'volume > 3x rata-rata 20 hari'." }
+          }
+        },
+        "notes": { "type": "string" }
+      }
+    },
+    "ApprovalDecision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["approvalId", "decision", "decidedBy"],
+      "properties": {
+        "approvalId": { "type": "string", "minLength": 1 },
+        "decision": { "enum": ["approve", "revise", "reject"] },
+        "comment": { "type": "string" },
+        "decidedBy": { "type": "string", "minLength": 1 }
+      },
+      "if": { "properties": { "decision": { "enum": ["revise", "reject"] } } },
+      "then": {
+        "required": ["comment"],
+        "properties": { "comment": { "minLength": 1 } }
+      }
+    }
+  }
+}

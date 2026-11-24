@@ -1,0 +1,127 @@
+@model InvestigationDetailsViewModel
+@{
+    var c = Model.Case;
+    var id = new System.Globalization.CultureInfo("id-ID");
+    ViewData["Title"] = $"{c.Symbol} {c.AnomalyDate:yyyy-MM-dd}";
+    var terminal = c.Status.IsTerminal();
+}
+
+<div id="investigation"
+     data-case-id="@c.Id"
+     data-mode="@(Model.Replay ? "replay" : "live")"
+     data-terminal="@(terminal ? "true" : "false")"
+     data-events-url="@Url.Action("Events", new { id = c.Id })"
+     data-events-json-url="@Url.Action("EventsJson", new { id = c.Id })"
+     data-approval-url="@Url.Action("Approval", new { id = c.Id })"
+     data-stop-url="@Url.Action("Stop", new { id = c.Id })">
+
+    @Html.AntiForgeryToken()
+
+    <div class="d-flex flex-wrap align-items-start justify-content-between gap-2 mb-3">
+        <div>
+            <h1 class="h3 mb-1">@c.Symbol · @c.AnomalyDate.ToString("d MMMM yyyy", id)</h1>
+            <div class="text-muted small">
+                Pemicu: @Model.Trigger.Rule · Agent: @c.Provider · Kasus @c.Id.ToString()[..8]
+            </div>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+            <span id="run-status" class="status status-@c.Status.ToString().ToLowerInvariant()" aria-live="polite">@CaseStatusText.Label(c.Status)</span>
+            <span id="connection" class="small text-muted" aria-live="polite"></span>
+            @if (!Model.Replay && !terminal)
+            {
+                <button id="stop-button" type="button" class="btn btn-outline-danger btn-sm">Hentikan investigasi</button>
+            }
+        </div>
+    </div>
+
+    @if (Model.Replay)
+    {
+        <div class="replay-bar card card-body py-2 mb-3 d-flex flex-row flex-wrap align-items-center gap-2">
+            <span class="small">Putar ulang event dari database.</span>
+            <label for="replay-speed" class="small ms-auto">Kecepatan</label>
+            <select id="replay-speed" class="form-select form-select-sm w-auto">
+                <option value="1">1x (waktu asli)</option>
+                <option value="4" selected>4x</option>
+                <option value="0">Langsung semua</option>
+            </select>
+            <button id="replay-start" type="button" class="btn btn-sm btn-primary">Putar</button>
+            <a asp-action="Details" asp-route-id="@c.Id" class="btn btn-sm btn-outline-secondary">Kembali ke tampilan langsung</a>
+        </div>
+    }
+
+    <div id="error-banner" class="alert alert-danger d-none" role="alert">
+        <div id="error-message"></div>
+        <form id="retry-form" asp-action="Retry" asp-route-id="@c.Id" method="post" class="d-none mt-2">
+            <button type="submit" class="btn btn-sm btn-outline-danger">Mulai ulang dengan data yang sama</button>
+        </form>
+    </div>
+    <div id="done-banner" class="alert d-none" role="status"></div>
+
+    <div class="row g-4">
+        <section class="col-lg-7" aria-labelledby="narrative-heading">
+            <h2 id="narrative-heading" class="h6 text-uppercase text-muted">Narasi agent</h2>
+            <div id="narrative" class="narrative card card-body" aria-live="polite"></div>
+
+            <div id="approvals" class="mt-3"></div>
+        </section>
+
+        <section class="col-lg-5" aria-labelledby="tools-heading">
+            <h2 id="tools-heading" class="h6 text-uppercase text-muted">
+                Panggilan data <span id="tool-count" class="badge text-bg-light"></span>
+            </h2>
+            <ol id="tool-calls" class="tool-calls list-unstyled"></ol>
+
+            @if (c.Decisions.Count > 0)
+            {
+                <h2 class="h6 text-uppercase text-muted mt-4">Keputusan analis</h2>
+                <ul class="list-unstyled small">
+                    @foreach (var d in c.Decisions)
+                    {
+                        <li class="mb-2">
+                            <strong>@CaseStatusText.DecisionLabel(d.Decision)</strong> oleh @d.DecidedBy,
+                            @d.DecidedAt.ToString("dd-MM-yyyy HH.mm") UTC
+                            @if (d.Comment is not null)
+                            {
+                                <div class="text-muted">"@d.Comment"</div>
+                            }
+                        </li>
+                    }
+                </ul>
+            }
+        </section>
+    </div>
+</div>
+
+<template id="approval-template">
+    <article class="approval card mb-3">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <strong class="approval-title"></strong>
+            <span class="approval-state small"></span>
+        </div>
+        <div class="card-body">
+            <div class="memo"></div>
+            <form class="approval-form mt-3 border-top pt-3">
+                <div class="row g-2">
+                    <div class="col-sm-6">
+                        <label class="form-label small">Nama analis</label>
+                        <input name="DecidedBy" class="form-control form-control-sm" required maxlength="128" autocomplete="name" />
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label small">Komentar (wajib untuk revisi dan tolak)</label>
+                        <textarea name="Comment" class="form-control form-control-sm" rows="2" maxlength="2000"></textarea>
+                    </div>
+                </div>
+                <div class="d-flex flex-wrap gap-2 mt-2">
+                    <button type="submit" name="Decision" value="approve" class="btn btn-success btn-sm">Setujui memo</button>
+                    <button type="submit" name="Decision" value="revise" class="btn btn-outline-primary btn-sm">Minta revisi</button>
+                    <button type="submit" name="Decision" value="reject" class="btn btn-outline-danger btn-sm">Tolak memo</button>
+                </div>
+                <div class="approval-message small mt-2" role="status"></div>
+            </form>
+        </div>
+    </article>
+</template>
+
+@section Scripts {
+    <script src="~/js/investigation.js" asp-append-version="true"></script>
+}

@@ -1,0 +1,103 @@
+@using Surveillance.Agents.Abstractions
+@model InvestigationIndexViewModel
+@{
+    ViewData["Title"] = "Investigasi UMA";
+}
+
+<h1 class="h3 mb-3">Investigasi UMA</h1>
+
+<div class="row g-4">
+    <section class="col-lg-5" aria-labelledby="start-heading">
+        <div class="card">
+            <div class="card-body">
+                <h2 id="start-heading" class="h5">Mulai investigasi</h2>
+                <p class="text-muted small">Isi data saham yang terdeteksi menyimpang. Agent akan menyusun draf memo dan menunggu keputusan Anda.</p>
+                <form asp-action="Start" method="post">
+                    <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+                    <div class="row g-2">
+                        <div class="col-6">
+                            <label asp-for="Form.Symbol" class="form-label"></label>
+                            <input asp-for="Form.Symbol" class="form-control text-uppercase" maxlength="4" autocomplete="off" />
+                            <span asp-validation-for="Form.Symbol" class="text-danger small"></span>
+                        </div>
+                        <div class="col-6">
+                            <label asp-for="Form.AnomalyDate" class="form-label"></label>
+                            <input asp-for="Form.AnomalyDate" type="date" class="form-control" />
+                            <span asp-validation-for="Form.AnomalyDate" class="text-danger small"></span>
+                        </div>
+                        <div class="col-6">
+                            <label asp-for="Form.TriggerKind" class="form-label"></label>
+                            <select asp-for="Form.TriggerKind" class="form-select">
+                                <option value="@TriggerKind.Volume">Volume</option>
+                                <option value="@TriggerKind.Price">Harga</option>
+                                <option value="@TriggerKind.Both">Harga dan volume</option>
+                            </select>
+                        </div>
+                        <div class="col-6">
+                            <label asp-for="Form.PriceChangePct" class="form-label"></label>
+                            <input asp-for="Form.PriceChangePct" class="form-control" step="any" />
+                        </div>
+                        <div class="col-12">
+                            <label asp-for="Form.Rule" class="form-label"></label>
+                            <input asp-for="Form.Rule" class="form-control" />
+                            <span asp-validation-for="Form.Rule" class="text-danger small"></span>
+                        </div>
+                        <div class="col-6">
+                            <label asp-for="Form.Volume" class="form-label"></label>
+                            <input asp-for="Form.Volume" class="form-control" />
+                        </div>
+                        <div class="col-6">
+                            <label asp-for="Form.AvgVolume" class="form-label"></label>
+                            <input asp-for="Form.AvgVolume" class="form-control" step="any" />
+                        </div>
+                        <div class="col-6">
+                            <label asp-for="Form.VolumeRatio" class="form-label"></label>
+                            <input asp-for="Form.VolumeRatio" class="form-control" step="any" />
+                        </div>
+                        <div class="col-12">
+                            <label asp-for="Form.Notes" class="form-label"></label>
+                            <textarea asp-for="Form.Notes" class="form-control" rows="2"></textarea>
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-primary mt-3">Mulai investigasi</button>
+                </form>
+            </div>
+        </div>
+    </section>
+
+    <section class="col-lg-7" aria-labelledby="cases-heading">
+        <h2 id="cases-heading" class="h5">Kasus terbaru</h2>
+        @if (Model.Cases.Count == 0)
+        {
+            <p class="text-muted">Belum ada investigasi. Mulai dengan mengisi form di samping.</p>
+        }
+        else
+        {
+            <table class="table table-sm align-middle">
+                <thead>
+                    <tr>
+                        <th>Saham</th>
+                        <th>Tanggal anomali</th>
+                        <th>Status</th>
+                        <th>Agent</th>
+                        <th>Dibuat (UTC)</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var c in Model.Cases)
+                    {
+                        <tr>
+                            <td><a asp-action="Details" asp-route-id="@c.Id">@c.Symbol</a></td>
+                            <td>@c.AnomalyDate.ToString("d MMM yyyy", new System.Globalization.CultureInfo("id-ID"))</td>
+                            <td><span class="status status-@c.Status.ToString().ToLowerInvariant()">@CaseStatusText.Label(c.Status)</span></td>
+                            <td>@c.Provider</td>
+                            <td>@c.CreatedAt.ToString("dd-MM HH.mm")</td>
+                            <td><a asp-action="History" asp-route-id="@c.Id" class="small">Putar ulang</a></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </section>
+</div>

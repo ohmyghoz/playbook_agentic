@@ -1,0 +1,7 @@
+<Solution>
+  <Folder Name="/app/">
+    <Project Path="app/Surveillance.Agents.Abstractions/Surveillance.Agents.Abstractions.csproj" />
+    <Project Path="app/Surveillance.Web.Tests/Surveillance.Web.Tests.csproj" />
+    <Project Path="app/Surveillance.Web/Surveillance.Web.csproj" />
+  </Folder>
+</Solution>

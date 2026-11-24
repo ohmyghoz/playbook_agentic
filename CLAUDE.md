@@ -70,6 +70,7 @@ contracts/
   agent-service-api.md        kontrak HTTP service agent Python
   COMPATIBILITY.md            hasil contract test per adapter
 app/
+  Surveillance.Agents.Abstractions/  IAgentClient, AgentEvent, tipe kontrak (class library)
   Surveillance.Web/
   Surveillance.Web.Tests/
 agents/
@@ -169,7 +170,7 @@ Selesai jika: contract test lulus atau setiap kegagalan dijelaskan di `COMPATIBI
 ## Status tahap
 
 - [x] Tahap 1: MCP IDX server
-- [ ] Tahap 2: aplikasi MVC dengan agent tiruan
+- [x] Tahap 2: aplikasi MVC dengan agent tiruan
 - [ ] Tahap 3: solusi MAF
 - [ ] Tahap 4: solusi LangGraph
 - [ ] Tahap 5: solusi Google ADK
@@ -184,3 +185,16 @@ Tambahkan satu baris per keputusan: tanggal, keputusan, alasan singkat.
 - 2026-11-24: Aksi korporasi memakai `idx_stockbit_actions`; `idx_corporate_actions` (IPOT) hanya cadangan. Alasan: IPOT sedang gagal, dan data Stockbit lebih lengkap.
 - 2026-11-24: Contoh keluaran `idx_bandar` di `mcp-tools.md` diambil dari JSON Schema resmi (`idx schema bandar`), belum dari data nyata, karena tool ini hanya bisa memakai IPOT. Ganti dengan contoh nyata saat IPOT pulih. Jika bandar gagal, agent boleh menghitung sendiri dari `idx_broker` dengan label hitungan agent.
 - 2026-11-24: Field broker `kind` pada data nyata juga bernilai `foreign`, padahal nilai itu tidak ada di enum schema resmi. Adapter jangan memvalidasi `kind` secara ketat.
+- 2026-11-24: Batas langkah = jumlah panggilan tool MCP, maksimum 15 per run (termasuk selama revisi; `submit_memo` tidak dihitung). Revisi memo maksimum 2. Alasan: ketiga framework menghitung iterasi dengan cara berbeda, sedangkan tool call bisa dihitung seragam oleh adapter.
+- 2026-11-24: Batas langkah tercapai → `error` kode `step_limit_exceeded`; tombol stop → `done` dengan `outcome: cancelled`. Alasan: `done` hanya untuk keputusan analis atau tindakan pengguna, `error` untuk kegagalan.
+- 2026-11-24: `events.schema.json` memakai JSON Schema 2020-12. `timestamp` dan tanggal juga diberi `pattern` (UTC berakhiran `Z`), karena `format` di 2020-12 secara default hanya anotasi dan tidak semua validator memeriksanya.
+- 2026-11-24: Kontrak C# (`IAgentClient`, `AgentEvent`, dan tipe input) diletakkan di class library `app/Surveillance.Agents.Abstractions`. Alasan: `agents/maf` cukup merujuk kontrak tanpa membawa MVC/EF, dan tidak terjadi referensi melingkar dengan `Surveillance.Web`.
+- 2026-11-24: Entitas EF untuk keputusan analis bernama `ApprovalDecisionRecord`. Alasan: `ApprovalDecision` sudah dipakai sebagai tipe kontrak untuk `ResumeAsync`.
+- 2026-11-24: Browser tidak membaca agent langsung. `RunPump` (BackgroundService) membaca `StreamAsync`, menyimpan event ke DB, lalu menyiarkannya; endpoint SSE memutar dari DB lalu mengikuti event live. `StreamAsync` berakhir saat run berhenti di `approval_required` atau selesai, dan dipanggil lagi setelah `ResumeAsync`. Alasan: DB jadi sumber kebenaran, reload dan tutup browser tidak memutus run.
+- 2026-11-24: `tool_call_finished` untuk `submit_memo` dipancarkan setelah keputusan analis, bukan sebelum jeda. Alasan: tool itu memang menunggu persetujuan, dan pola ini sama dengan fungsi berpersetujuan di MAF. Tertulis di ASD.
+- 2026-11-24: Stop saat run menunggu approval: pump memanggil `StreamAsync` dengan token yang sudah dibatalkan, dan adapter menutup run dengan `done(cancelled)`. Alasan: `IAgentClient` hanya punya tiga operasi. Untuk service Python (Tahap 4) perlu cara membatalkan run di sisi service; dibahas saat menulis `agent-service-api.md`.
+- 2026-11-24: Jika adapter melempar exception atau run tidak bisa dimulai, aplikasi sendiri yang menambahkan event `error` (kode `internal` atau `mcp_unavailable`) dengan `sequence` berikutnya, supaya setiap run tetap diakhiri event katalog.
+- 2026-11-24: Paket EF Core dan Mvc.Testing dikunci ke 10.0.15, karena versi 11 hanya untuk net11.
+- 2026-11-24: LocalDB tidak bisa start di mesin ini (SQL Server 2016 dan 2025): `misaligned log IOs`, masalah ukuran sektor disk NVMe di Windows 11. Instance `(localdb)\Surveillance` (17.0) tersisa dan tidak dipakai.
+- 2026-11-24: Database pengembangan memakai Azure SQL: server `ojk-agentik-sql-pthuo0`, database baru `Surveillance` (serverless GP_S_Gen5, auto-pause 60 menit). Login lewat Entra ID (`Authentication=Active Directory Default`, memakai sesi `az login`); akun pengguna dijadikan admin Entra server. Connection string tanpa password, tersimpan di user-secrets. EF Core memakai `EnableRetryOnFailure` karena database serverless perlu waktu untuk menyala.
+- 2026-11-24: Catatan keamanan: server Azure SQL punya aturan firewall `AllowAll-Experiment` (0.0.0.0–255.255.255.255). Belum diubah; sebaiknya dihapus dan diganti aturan per IP.
