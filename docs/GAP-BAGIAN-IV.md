@@ -15,7 +15,10 @@ test Tahap 6a yang belum di-commit. Nomor baris merujuk ke kondisi itu.
 
 Diperbarui setelah Tahap 7 (25 November 2026): autentikasi demo, keputusan
 approval yang aman dari konkurensi, state machine kasus, penyimpanan event yang
-lebih cepat, dan halaman error berbahasa Indonesia. Butir yang berubah merujuk
+lebih cepat, dan halaman error berbahasa Indonesia.
+
+Diperbarui setelah Tahap 8: kontrak event untuk tahap alur kerja dan bukti data
+(`contracts/CHANGE-001-step-and-evidence.md`). Butir yang berubah merujuk
 ke nama file dan method, bukan nomor baris, karena nomor baris lama sudah bergeser.
 
 ## Ringkasan
@@ -23,7 +26,7 @@ ke nama file dan method, bukan nomor baris, karena nomor baris lama sudah berges
 | Bab | Ya | Sebagian | Belum |
 |---|---|---|---|
 | 10. Transport dan streaming | 3 | 3 | 2 |
-| 11. Pola UI/UX agentic | 4 | 6 | 1 |
+| 11. Pola UI/UX agentic | 5 | 5 | 1 |
 | 12. Human-in-the-loop | 4 | 4 | 0 |
 | 13. State dan durabilitas | 3 | 2 | 3 |
 
@@ -99,12 +102,12 @@ jadi pemecahannya bersifat mekanis.
 | Skenario: agent diam 30 detik terasa rusak | **Sebagian** | Indikator koneksi `Details.cshtml:29`, `investigation.js:345-349`; titik berdenyut untuk tool berjalan (`site.css`, kelas `.tool-call.running .tool-icon`) | Saat model berpikir sebelum token pertama, atau di antara tool call, layar tidak menunjukkan apa-apa. Belum ada indikator "agent sedang berpikir" atau pengatur waktu "tidak ada kabar selama N detik". |
 | Teks mengalir + indikator berpikir (`token`) | **Sebagian** | `investigation.js:82-89` (narasi, baris baru per giliran model), penggabungan token sekitar 60 karakter di MAF dan service Python | Teks mengalir sudah ada. Indikator berpikir belum. Bisa dibuat di UI saja (muncul jika lebih dari N detik tanpa event), atau 🔶 dengan event baru seperti `model_call_started`. |
 | Visualisasi tool call (`tool_call_started`/`finished`) | **Ya** | `investigation.js:130-170` (`addToolCall`, `finishToolCall`), `Details.cshtml:69-72`, ringkasan bahasa Indonesia dari `ToolResultSummarizer` (MAF) dan `summarizer.py` (Python) | Yang tampil masih nama teknis (`idx_broker`), belum kalimat seperti "Sedang memeriksa broker summary…". Bisa dibuat dengan peta nama tool → label di JavaScript, tanpa mengubah kontrak. |
-| Progres multi-langkah | **Sebagian** | Penghitung `x / 15` (`investigation.js`, `updateToolCount`); `maxToolCalls` di `run_started` | Belum ada daftar tahap seperti di ASD (ukur penyimpangan → cari penjelasan → gali broker/asing → nilai bukti → memo). Bisa ditebak di UI dari nama tool, atau 🔶 dengan event/field langkah yang eksplisit dari agent. |
-| Tampilan bukti dan sumber data | **Sebagian** | `renderMemo` (`investigation.js:207-270`): setiap temuan punya tautan ke kartu tool call (`#tool-<id>`, disorot lewat `:target`), daftar "Data tidak tersedia"; `Memo.findings[].evidence[]` di skema | Analis hanya melihat ringkasan, tidak bisa membuka data mentah yang dipakai agent (sengaja: kontrak hanya membawa `summary`). Sumber data (Stockbit/IPOT/Yahoo) hanya tersirat di teks ringkasan. Menampilkan data mentah butuh 🔶 field atau endpoint baru. |
+| Progres multi-langkah | **Sebagian** | Kontrak: event `step_started` dengan lima tahap ASD (CHANGE-001), dipancarkan keempat adapter menurut `InvestigationSteps.cs` / `steps.py`; penghitung `x / 15` di `investigation.js` | Kontrak dan adapter sudah siap sejak Tahap 8. Tampilan daftar tahap di halaman investigasi menyusul di Tahap 10d. |
+| Tampilan bukti dan sumber data | **Sebagian** | `renderMemo` (`investigation.js`): temuan bertaut ke kartu tool call; kontrak: `source` dan `resultPreview` di `tool_call_finished` (CHANGE-001); aplikasi menyimpan pratinjau di tabel `ToolResultPreviews` (`ResultPreviewSplitter.cs`) dan menyajikannya lewat `GET /investigations/{id}/tools/{toolCallId}/preview` | Data sudah tersedia di backend sejak Tahap 8. Panel bukti yang menampilkan sumber, waktu data, dan pratinjau menyusul di Tahap 10e. |
 | Tombol stop | **Ya** | `Details.cshtml:32`, `investigation.js:315-326` | Belum ada konfirmasi sebelum menghentikan (sengaja tanpa dialog), dan belum ada pesan bahwa event yang sudah masuk tetap tersimpan sebelum tombol ditekan. Pesan itu baru muncul setelah run berhenti. |
 | Error yang manusiawi (`error`) | **Ya** | Banner `Details.cshtml:52-56`, `investigation.js:115-121`; pesan bahasa Indonesia dari adapter; tombol "Mulai ulang dengan data yang sama" untuk `retryable: true` (`InvestigationController.cs:39`); kegagalan per tool tampil merah dengan alasan | Error non-retryable belum memberi langkah berikutnya. Error HTTP aplikasi (404, 403, 500) sudah memakai halaman berbahasa Indonesia yang menjelaskan apa yang terjadi dan langkah berikutnya (`HomeController.Error`, `ErrorViewModel.ForStatus`). Respons JSON dari endpoint approval tidak diubah. |
 | Menyatukan: halaman investigasi UMA utuh | **Ya** | `Details.cshtml`, `investigation.js`, `History` (`InvestigationController.cs:56`) untuk putar ulang | Sudah diuji di browser untuk keempat provider. |
-| Menegosiasikan event tambahan dengan pembuat agent | **Sebagian** | Aturan di `CLAUDE.md` (kontrak hanya berubah dengan persetujuan), `EVENT-MAPPING.md` per solusi, `contracts/COMPATIBILITY.md` (Tahap 6a) | Proses dan dokumennya ada, tapi belum ada contoh negosiasi yang tuntas. Kandidat contoh paling dekat: field `agentName` untuk use case 2, atau event indikator berpikir. |
+| Menegosiasikan event tambahan dengan pembuat agent | **Ya** | `contracts/CHANGE-001-step-and-evidence.md` (kebutuhan, alternatif tanpa perubahan kontrak, usulan, dampak per solusi, kompatibilitas ke belakang), `events.schema.json`, `EVENT-MAPPING.md` per solusi, contract test `Steps_move_forward_and_mcp_results_carry_source_and_preview` | Contoh negosiasi tuntas dari kebutuhan sampai contract test lulus untuk keempat adapter. |
 | Format katalog: partial view + JavaScript per pola | **Belum** | – | Butuh pemecahan menjadi partial view (misalnya `_Narrative.cshtml`, `_ToolCalls.cshtml`, `_ApprovalCard.cshtml`, `_ErrorBanner.cshtml`) dan modul JavaScript per pola. |
 | Demo 11-1 sampai 11-6 (satu per pola) | **Sebagian** | Skenario fake: `FakeAgentOptions` (`Happy`, `ModelError`, `StepLimit`) dan skenario lewat catatan (`scenario=slow`, `scenario=step_limit`) di `FakeAgentClient.cs` | Semua pola bisa diperagakan dengan provider `fake`, tapi di satu halaman. Belum ada halaman atau skenario per pola. Skenario "diam 30 detik" belum ada di fake. |
 
@@ -144,8 +147,8 @@ paling dibutuhkan buku.
 |---|---|---|---|
 | Progres per worker di use case 2 | 13 | Field opsional `agentName` di semua event (sudah direncanakan di Tahap 6) | Tidak |
 | Indikator agent sedang berpikir | 11 | Event baru, misalnya `model_call_started` (payload kosong atau nomor giliran) | Ya, dengan pendekatan UI: tampilkan indikator jika lebih dari N detik tanpa event. Tidak setepat event dari agent. |
-| Progres multi-langkah | 11 | Event `step_started` dengan nama tahap ASD, atau field `step` di `tool_call_started` | Sebagian: UI bisa memetakan nama tool ke tahap, tapi tidak tahu kapan agent sedang "menilai bukti". |
-| Bukti dan sumber data mentah | 11 | Field `source` (misalnya `stockbit`, `ipot`, `yahoo`) dan `resultRef` di `tool_call_finished`, ditambah endpoint `GET /runs/{id}/tool-results/{toolCallId}` di `agent-service-api.md` | Tidak. Saat ini hanya `summary` yang dikirim, dan data mentah tidak disimpan aplikasi. |
+| Progres multi-langkah | 11 | ✅ Diterapkan di Tahap 8: event `step_started` (CHANGE-001) | – |
+| Bukti dan sumber data mentah | 11 | ✅ Diterapkan di Tahap 8: `source` dan `resultPreview` di `tool_call_finished`; data mentah lewat endpoint aplikasi, bukan endpoint service agent (CHANGE-001) | – |
 | Keputusan analis di aliran event | 12 | Event `approval_decided` (keputusan, `decidedBy`, komentar) supaya putar ulang dan audit lengkap dari satu aliran | Ya, aplikasi bisa menggabungkan event dengan tabel `ApprovalDecisionRecord` saat menampilkan. Dengan event baru, urutan waktunya lebih jelas. |
 | Approval kedaluwarsa yang diputuskan agent | 12 | Kode error baru, misalnya `approval_expired`, atau `outcome: expired` di `done` | Ya, jika kedaluwarsa diputuskan aplikasi: aplikasi cukup memanggil pembatalan, dan hasilnya `done(cancelled)`. |
 | Label tool yang ramah | 11 | Field opsional `displayName` di `tool_call_started` | Ya, dengan peta nama tool ke label di JavaScript. Disarankan tanpa perubahan kontrak. |

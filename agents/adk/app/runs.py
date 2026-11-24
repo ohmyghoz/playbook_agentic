@@ -23,6 +23,7 @@ from google.genai import types
 from . import instructions
 from .config import Settings
 from .contract import PAUSE_TYPES, TERMINAL_TYPES, ApprovalDecision, InvestigationRequest, event, tool_finished
+from .steps import next_step, step_payload
 from .instructions import SUBMIT_MEMO
 from .summarizer import summarize
 
@@ -63,6 +64,7 @@ class RunInfo:
     pending: dict[str, Any] | None = None  # {"approvalId", "toolCallId", "confirmationId"} while paused
     open_calls: dict[str, str] = field(default_factory=dict)  # toolCallId -> toolName
     seen_calls: list[str] = field(default_factory=list)
+    step: str | None = None  # last workflow stage announced with step_started
 
 
 class RunStore:
@@ -354,6 +356,16 @@ class RunManager:
     async def _emit(self, run: RunInfo, type_: str, payload: dict[str, Any]) -> None:
         if run.status == "finished":
             return
+        step = next_step(run.step, type_, payload)
+        if step and type_ != "run_started":
+            await self._emit_one(run, "step_started", step_payload(step))
+        await self._emit_one(run, type_, payload)
+        if step and type_ == "run_started":
+            await self._emit_one(run, "step_started", step_payload(step))
+
+    async def _emit_one(self, run: RunInfo, type_: str, payload: dict[str, Any]) -> None:
+        if type_ == "step_started":
+            run.step = payload["step"]
         run.sequence += 1
         if type_ in TERMINAL_TYPES:
             run.status, run.pending = "finished", None

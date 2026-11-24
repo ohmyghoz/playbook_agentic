@@ -113,6 +113,7 @@ Setiap event punya `runId`, `sequence`, `timestamp`, `type`, dan `payload`.
 | `type` | Kapan muncul |
 |---|---|
 | `run_started` | Event pertama setiap run |
+| `step_started` | Agent masuk ke tahap alur kerja berikutnya (lihat Tahap alur kerja di bawah) |
 | `token` | Potongan narasi agent saat model mengalirkan teks |
 | `tool_call_started` | Sebelum tool MCP atau `submit_memo` dijalankan |
 | `tool_call_finished` | Setelah tool selesai, berhasil atau gagal |
@@ -128,10 +129,42 @@ Aturan urutan:
 - tidak ada `tool_call_started` baru selama run menunggu keputusan analis.
 - setiap run ditutup oleh tepat satu `done` atau `error`. Setelah itu tidak ada event lagi.
 - `approval_required` boleh muncul lebih dari sekali. Setiap keputusan `revise` menghasilkan draf baru dengan `revision` naik 1.
+- `step_started` hanya maju. Setiap tahap muncul paling banyak sekali per run, dan tahap boleh dilompati.
 
 `tool_call_finished.summary` berisi ringkasan hasil dalam bahasa Indonesia,
 paling panjang 500 karakter, misalnya "Harga 5.800 (+2,2%), volume 1,1x
-rata-rata 3 bulan". Keluaran mentah tool tidak dikirim ke front end.
+rata-rata 3 bulan".
+
+### Tahap alur kerja
+
+Enam langkah di Alur kerja dikelompokkan menjadi lima tahap. Langkah 1
+(cek sesi Stockbit) termasuk tahap pertama.
+
+| `step` | `label` | Langkah alur kerja | Kapan `step_started` dipancarkan |
+|---|---|---|---|
+| `measure` | Mengukur penyimpangan | 1 dan 2 | Tepat setelah `run_started` |
+| `explain` | Mencari penjelasan wajar | 3 | Sebelum tool pertama dari kelompok penjelasan: `idx_news`, `idx_stockbit_actions`, `idx_corporate_actions` |
+| `deep_dive` | Menggali broker dan arus asing | 4 | Sebelum tool pertama dari kelompok penggalian: `idx_broker`, `idx_bandar`, `idx_foreign`, `idx_stockbit_movements` |
+| `assess` | Menilai bukti | 5 | Sebelum `tool_call_started` untuk `submit_memo` yang pertama |
+| `memo` | Draf memo menunggu keputusan analis | 6 | Sebelum `approval_required` yang pertama |
+
+Tahap ditentukan oleh adapter dari nama tool, bukan oleh model, supaya keempat
+solusi memancarkan urutan yang sama. Tool di luar daftar di atas tidak
+memindahkan tahap. Tool yang dipanggil saat revisi tetap berada di tahap
+`memo`, karena tahap tidak boleh mundur.
+
+### Sumber dan pratinjau data
+
+`tool_call_finished` untuk tool MCP yang memberi hasil, berhasil atau gagal,
+membawa dua field tambahan:
+
+- `source`: asal data dari amplop JSON idx, yaitu `server` (`idx`), `provider` (`yahoo`, `stockbit`, `ipot`, `idx`), `fetchedAt` dalam UTC, dan `stale`.
+- `resultPreview`: keluaran mentah tool. Jika lebih dari 8192 byte UTF-8, teks dipotong di batas karakter dan diakhiri baris baru lalu penanda `…[dipotong]`, dengan total tetap paling banyak 8192 byte.
+
+Kedua field tidak ada untuk `submit_memo` dan untuk panggilan yang ditutup
+agent sendiri (dibatalkan, batas langkah, model gagal). Aplikasi menyimpan
+`resultPreview` terpisah dari event dan tidak meneruskannya ke browser lewat
+SSE. Analis membukanya saat memeriksa bukti.
 
 ## Struktur memo
 

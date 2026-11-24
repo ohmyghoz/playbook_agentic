@@ -325,7 +325,7 @@
 
     // ---- data sources ------------------------------------------------------
 
-    const eventTypes = ["run_started", "token", "tool_call_started", "tool_call_finished", "approval_required", "done", "error"];
+    const eventTypes = ["run_started", "step_started", "token", "tool_call_started", "tool_call_finished", "approval_required", "done", "error"];
 
     function connect() {
         // The server replays stored events first, so a reload loses nothing.

@@ -52,6 +52,21 @@ public class AgentEventRecord
     public DateTime ReceivedAt { get; set; }
 }
 
+/// <summary>
+/// The raw output of one tool call (<c>resultPreview</c>, at most 8 KB), kept apart from the event
+/// so SSE and replays stay small. Read only when an analyst opens the evidence.
+/// </summary>
+public class ToolResultPreview
+{
+    public long Id { get; set; }
+    public Guid CaseId { get; set; }
+    public required string RunId { get; set; }
+    public required string ToolCallId { get; set; }
+    public required string ToolName { get; set; }
+    public required string Preview { get; set; }
+    public DateTime CreatedAt { get; set; }
+}
+
 /// <summary>An application setting changed from the settings page, such as the active agent solution.</summary>
 public class AppSetting
 {

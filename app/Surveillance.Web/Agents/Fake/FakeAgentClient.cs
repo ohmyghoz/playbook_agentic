@@ -82,6 +82,7 @@ public sealed class FakeAgentClient(IOptions<FakeAgentOptions> options) : IAgent
             {
                 yield return Emit(run, AgentEventType.RunStarted,
                     new RunStartedPayload(run.Request.CaseId, run.Request.Symbol, MaxToolCalls));
+                if (StepBefore(run, AgentEventType.RunStarted) is { } first) yield return first;
                 Enqueue(run, InitialSteps(run));
             }
             else if (run.Phase == RunPhase.Resumed)
@@ -113,6 +114,7 @@ public sealed class FakeAgentClient(IOptions<FakeAgentOptions> options) : IAgent
                         var callId = $"call_{++run.CallCounter}";
                         run.ToolCallIds[tool.Name] = callId;
                         run.ToolCallsUsed++;
+                        if (StepBefore(run, AgentEventType.ToolCallStarted, tool.Name) is { } toolStep) yield return toolStep;
                         yield return Emit(run, AgentEventType.ToolCallStarted,
                             new ToolCallStartedPayload(callId, tool.Name, JsonSerializer.SerializeToElement(tool.Arguments)));
 
@@ -123,9 +125,10 @@ public sealed class FakeAgentClient(IOptions<FakeAgentOptions> options) : IAgent
                             yield break;
                         }
 
-                        yield return Emit(run, AgentEventType.ToolCallFinished, tool.Error is null
-                            ? new ToolCallFinishedPayload(callId, tool.Name, ToolCallStatus.Ok, tool.Summary)
-                            : new ToolCallFinishedPayload(callId, tool.Name, ToolCallStatus.Error, tool.Summary, tool.Error));
+                        var raw = RawOutput(run, tool);
+                        yield return Emit(run, AgentEventType.ToolCallFinished, new ToolCallFinishedPayload(
+                            callId, tool.Name, tool.Error is null ? ToolCallStatus.Ok : ToolCallStatus.Error, tool.Summary, tool.Error,
+                            ToolEvidence.Source(JsonDocument.Parse(raw).RootElement), ToolEvidence.Preview(raw)));
                         break;
 
                     case ApprovalStep approval:
@@ -134,8 +137,10 @@ public sealed class FakeAgentClient(IOptions<FakeAgentOptions> options) : IAgent
                         run.ApprovalId = $"approval_{run.Revision + 1}";
                         var submitId = $"call_memo_{run.Revision + 1}";
                         run.InFlightTool = (submitId, SubmitMemo);
+                        if (StepBefore(run, AgentEventType.ToolCallStarted, SubmitMemo) is { } assess) yield return assess;
                         yield return Emit(run, AgentEventType.ToolCallStarted, new ToolCallStartedPayload(
                             submitId, SubmitMemo, JsonSerializer.SerializeToElement(new { memo = run.Memo }, AgentJson.Options)));
+                        if (StepBefore(run, AgentEventType.ApprovalRequired) is { } memoStep) yield return memoStep;
                         yield return Emit(run, AgentEventType.ApprovalRequired,
                             new ApprovalRequiredPayload(run.ApprovalId, run.Revision, run.Memo));
                         lock (run)
@@ -197,6 +202,58 @@ public sealed class FakeAgentClient(IOptions<FakeAgentOptions> options) : IAgent
 
     private static AgentEvent Emit<T>(FakeRun run, AgentEventType type, T payload) =>
         AgentEvent.Create(run.RunId, ++run.Sequence, type, payload);
+
+    /// <summary>The step_started event that must come before an event, if the stage moves.</summary>
+    private static AgentEvent? StepBefore(FakeRun run, AgentEventType type, string? toolName = null)
+    {
+        if (InvestigationSteps.Next(run.Step, type, toolName) is not { } step)
+        {
+            return null;
+        }
+
+        run.Step = step;
+        return Emit(run, AgentEventType.StepStarted, InvestigationSteps.Payload(step));
+    }
+
+    /// <summary>
+    /// What the idx MCP server would return, in its JSON envelope. idx_history carries daily
+    /// candles, so its output is larger than the 8 KB preview limit, as it is for real.
+    /// </summary>
+    private static string RawOutput(FakeRun run, ToolStep tool)
+    {
+        if (tool.Error is { } error)
+        {
+            return JsonSerializer.Serialize(new { error = new { code = error.Code, message = error.Message }, exit_code = 3 });
+        }
+
+        var provider = tool.Name switch
+        {
+            "idx_quote" or "idx_history" => "yahoo",
+            "idx_news" or "idx_foreign" => "idx",
+            _ => "stockbit",
+        };
+        object data = tool.Name == "idx_history"
+            ? new
+            {
+                summary = new { candles = 64, avg_volume = 210_424_313, low = 4_740, high = 6_850 },
+                candles = Enumerable.Range(0, 120).Select(i => new
+                {
+                    date = run.Request.AnomalyDate.AddDays(i - 119).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                    open = 5_800 + i, high = 5_850 + i, low = 5_750 + i, close = 5_810 + i, volume = 200_000_000 + i * 1_000_000,
+                }),
+            }
+            : new { note = tool.Summary, arguments = tool.Arguments };
+
+        return JsonSerializer.Serialize(new
+        {
+            schema = "idx." + tool.Name[4..],
+            provider,
+            fetched_at = "2026-11-24T14:09:39Z",
+            cached = false,
+            stale = false,
+            data,
+        });
+    }
 
     /// <summary>Returns true when the run was cancelled during the delay.</summary>
     private static async Task<bool> DelayAsync(int milliseconds, CancellationToken ct)
@@ -407,6 +464,7 @@ public sealed class FakeAgentClient(IOptions<FakeAgentOptions> options) : IAgent
         public ApprovalDecision? Decision { get; set; }
         public Memo? Memo { get; set; }
         public (string Id, string Name)? InFlightTool { get; set; }
+        public InvestigationStep? Step { get; set; }
     }
 
     private abstract record Step;

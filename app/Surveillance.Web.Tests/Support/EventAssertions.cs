@@ -93,5 +93,67 @@ public static class EventAssertions
         {
             Assert.Equal(AgentEventType.ApprovalRequired, events[^1].Type);
         }
+
+        AssertStepsAndEvidence(events);
+    }
+
+    /// <summary>
+    /// CHANGE-001 rules: step_started right after run_started and only forward, assess before the
+    /// first submit_memo, memo before the first approval_required, source on every MCP result,
+    /// and resultPreview within 8192 UTF-8 bytes.
+    /// </summary>
+    public static void AssertStepsAndEvidence(IReadOnlyList<AgentEvent> events)
+    {
+        if (events.Count > 1)
+        {
+            Assert.Equal(AgentEventType.StepStarted, events[1].Type);
+            Assert.Equal(InvestigationStep.Measure, events[1].PayloadAs<StepStartedPayload>().Step);
+        }
+
+        InvestigationStep? current = null;
+        foreach (var e in events)
+        {
+            switch (e.Type)
+            {
+                case AgentEventType.StepStarted:
+                    var step = e.PayloadAs<StepStartedPayload>();
+                    Assert.True(current is null || step.Step > current, $"Step {step.Step} at {e.Sequence} does not move forward from {current}.");
+                    Assert.Equal(InvestigationSteps.Label(step.Step), step.Label);
+                    current = step.Step;
+                    break;
+                case AgentEventType.ToolCallStarted when e.PayloadAs<ToolCallStartedPayload>().ToolName == InvestigationSteps.SubmitMemo:
+                    Assert.True(current >= InvestigationStep.Assess, $"submit_memo at {e.Sequence} before step assess.");
+                    break;
+                case AgentEventType.ApprovalRequired:
+                    Assert.Equal(InvestigationStep.Memo, current);
+                    break;
+                case AgentEventType.ToolCallFinished:
+                    var finished = e.PayloadAs<ToolCallFinishedPayload>();
+                    if (finished.ResultPreview is { } preview)
+                    {
+                        Assert.True(System.Text.Encoding.UTF8.GetByteCount(preview) <= ToolEvidence.MaxPreviewBytes,
+                            $"resultPreview of {finished.ToolCallId} exceeds {ToolEvidence.MaxPreviewBytes} bytes.");
+                    }
+
+                    if (finished.ToolName != InvestigationSteps.SubmitMemo && finished.Status == ToolCallStatus.Ok)
+                    {
+                        Assert.True(finished.Source is { Server: ToolEvidence.Server }, $"MCP result {finished.ToolCallId} ({finished.ToolName}) has no source.");
+                    }
+
+                    break;
+            }
+        }
+    }
+
+    /// <summary>Events straight from an adapter carry resultPreview for every MCP result (the application strips it later).</summary>
+    public static void AssertPreviewsPresent(IReadOnlyList<AgentEvent> events)
+    {
+        foreach (var finished in events.Where(e => e.Type == AgentEventType.ToolCallFinished).Select(e => e.PayloadAs<ToolCallFinishedPayload>()))
+        {
+            if (finished.ToolName != InvestigationSteps.SubmitMemo && finished.Status == ToolCallStatus.Ok)
+            {
+                Assert.False(string.IsNullOrEmpty(finished.ResultPreview), $"MCP result {finished.ToolCallId} ({finished.ToolName}) has no resultPreview.");
+            }
+        }
     }
 }

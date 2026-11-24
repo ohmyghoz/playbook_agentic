@@ -29,8 +29,8 @@ def result_text(content: Any) -> str:
 
 
 def summarize(call_id: str, tool_name: str, text: str, is_error: bool = False) -> dict[str, Any]:
-    """Returns a tool_call_finished payload."""
-    from .contract import tool_finished
+    """Returns a tool_call_finished payload, with source and resultPreview for MCP results."""
+    from .contract import result_preview, tool_finished, tool_source
 
     if text.startswith(LIMIT_MARKER):
         return tool_finished(call_id, tool_name, False, "Tidak dijalankan: batas panggilan data tercapai.", "step_limit")
@@ -38,9 +38,19 @@ def summarize(call_id: str, tool_name: str, text: str, is_error: bool = False) -
         return tool_finished(call_id, tool_name, True, "Memo disetujui analis.")
 
     try:
-        envelope = _find_envelope(text)
+        envelope, raw = _find_envelope(text)
     except (ValueError, TypeError):
-        envelope = None
+        envelope, raw = None, text
+
+    payload = _summary(call_id, tool_name, text, is_error, envelope)
+    # The data behind the summary, for the evidence view (CHANGE-001).
+    payload["source"] = tool_source(envelope)
+    payload["resultPreview"] = result_preview(raw)
+    return payload
+
+
+def _summary(call_id: str, tool_name: str, text: str, is_error: bool, envelope: dict[str, Any] | None) -> dict[str, Any]:
+    from .contract import tool_finished
 
     if envelope is None:
         if is_error:
@@ -61,24 +71,26 @@ def summarize(call_id: str, tool_name: str, text: str, is_error: bool = False) -
         return tool_finished(call_id, tool_name, True, "Data diterima.")
 
 
-def _find_envelope(text: str) -> dict[str, Any] | None:
+def _find_envelope(text: str) -> tuple[dict[str, Any] | None, str]:
+    """The idx envelope and the innermost tool output text it came from."""
     start = text.find("{")
     if start < 0:
-        return None
-    root = json.loads(text[start:])
+        return None, text
+    raw = text[start:]
+    root = json.loads(raw)
     if not isinstance(root, dict):
-        return None
+        return None, raw
     if "schema" in root or "error" in root:
-        return root
+        return root, raw
     if isinstance(root.get("text"), str):  # a single MCP text content block
         return _find_envelope(root["text"])
     if "logged_in" in root:  # idx_stockbit_status answers without an envelope
-        return {"schema": "idx.stockbit.status", "data": root}
+        return {"schema": "idx.stockbit.status", "data": root}, raw
     if isinstance(root.get("content"), list):  # MCP CallToolResult
         for item in root["content"]:
             if isinstance(item, dict) and isinstance(item.get("text"), str):
                 return _find_envelope(item["text"])
-    return None
+    return None, raw
 
 
 def _failure_text(tool_name: str, code: str) -> str:

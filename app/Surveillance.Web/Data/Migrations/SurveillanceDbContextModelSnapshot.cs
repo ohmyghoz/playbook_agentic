@@ -175,6 +175,49 @@ namespace Surveillance.Web.Data.Migrations
                     b.ToTable("Cases");
                 });
 
+            modelBuilder.Entity("Surveillance.Web.Data.ToolResultPreview", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<Guid>("CaseId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Preview")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("RunId")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<string>("ToolCallId")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<string>("ToolName")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CaseId", "ToolCallId");
+
+                    b.HasIndex("RunId", "ToolCallId")
+                        .IsUnique();
+
+                    b.ToTable("ToolResultPreviews", (string)null);
+                });
+
             modelBuilder.Entity("Surveillance.Web.Data.AgentEventRecord", b =>
                 {
                     b.HasOne("Surveillance.Web.Data.InvestigationCase", null)
@@ -188,6 +231,15 @@ namespace Surveillance.Web.Data.Migrations
                 {
                     b.HasOne("Surveillance.Web.Data.InvestigationCase", null)
                         .WithMany("Decisions")
+                        .HasForeignKey("CaseId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Surveillance.Web.Data.ToolResultPreview", b =>
+                {
+                    b.HasOne("Surveillance.Web.Data.InvestigationCase", null)
+                        .WithMany()
                         .HasForeignKey("CaseId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();

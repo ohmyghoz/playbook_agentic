@@ -98,9 +98,14 @@ public sealed class RunPump(
                 e.Type, e.Sequence, caseId, cursor.Status, wanted);
         }
 
-        var record = EventMapping.ToRecord(caseId, e);
+        var (stored, preview) = ResultPreviewSplitter.Split(caseId, e);
+        var record = EventMapping.ToRecord(caseId, stored);
         await using var db = await dbFactory.CreateDbContextAsync();
         db.Events.Add(record);
+        if (preview is not null)
+        {
+            db.Previews.Add(preview);
+        }
 
         // Update only the columns that change, without reading the row first.
         var stub = new InvestigationCase { Id = caseId, Symbol = "", TriggerJson = "", Provider = "" };

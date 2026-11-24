@@ -7,6 +7,17 @@ namespace Surveillance.Agents.Abstractions;
 
 public sealed record RunStartedPayload(string CaseId, string Symbol, int MaxToolCalls);
 
+public enum InvestigationStep
+{
+    Measure,
+    Explain,
+    DeepDive,
+    Assess,
+    Memo,
+}
+
+public sealed record StepStartedPayload(InvestigationStep Step, string Label);
+
 public sealed record TokenPayload(string Text);
 
 public sealed record ToolCallStartedPayload(string ToolCallId, string ToolName, JsonElement Arguments);
@@ -19,12 +30,19 @@ public enum ToolCallStatus
 
 public sealed record ToolError(string Code, string Message);
 
+/// <summary>Where an MCP tool's data came from (<c>$defs/ToolSource</c>).</summary>
+public sealed record ToolSource(string Server, string? Provider = null, DateTime? FetchedAt = null, bool? Stale = null);
+
+/// <param name="Source">Set for MCP tools that returned a result; see <see cref="ToolEvidence"/>.</param>
+/// <param name="ResultPreview">Raw tool output, at most 8192 UTF-8 bytes. The application stores it apart from the event.</param>
 public sealed record ToolCallFinishedPayload(
     string ToolCallId,
     string ToolName,
     ToolCallStatus Status,
     string Summary,
-    ToolError? Error = null);
+    ToolError? Error = null,
+    ToolSource? Source = null,
+    string? ResultPreview = null);
 
 public sealed record ApprovalRequiredPayload(string ApprovalId, int Revision, Memo Memo);
 

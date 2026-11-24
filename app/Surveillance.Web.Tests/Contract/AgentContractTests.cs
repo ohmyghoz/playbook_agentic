@@ -157,6 +157,31 @@ public abstract class AgentContractTests
     }
 
     [Fact]
+    public async Task Steps_move_forward_and_mcp_results_carry_source_and_preview()
+    {
+        var (_, events) = await RunUntilApprovalAsync();
+
+        // Every script measures, digs into broker or bandar data, then submits the memo (fake also checks the news).
+        var steps = events.Where(e => e.Type == AgentEventType.StepStarted).Select(e => e.PayloadAs<StepStartedPayload>().Step).ToList();
+        Assert.Equal(InvestigationStep.Measure, steps[0]);
+        Assert.Contains(InvestigationStep.DeepDive, steps);
+        Assert.Equal([InvestigationStep.Assess, InvestigationStep.Memo], steps[^2..]);
+
+        EventAssertions.AssertPreviewsPresent(events);
+        var finished = events.Where(e => e.Type == AgentEventType.ToolCallFinished)
+            .Select(e => e.PayloadAs<ToolCallFinishedPayload>()).ToList();
+
+        var quote = finished.Single(f => f.ToolName == "idx_quote");
+        Assert.Equal(new ToolSource("idx", "yahoo", new DateTime(2026, 11, 24, 14, 9, 39, DateTimeKind.Utc), false), quote.Source);
+        Assert.StartsWith("{\"schema\":\"idx.quote", quote.ResultPreview);
+
+        // idx_history's output is larger than 8 KB, so it is cut with the marker at the end.
+        var history = finished.Single(f => f.ToolName == "idx_history").ResultPreview!;
+        Assert.EndsWith(ToolEvidence.TruncationMarker, history);
+        Assert.InRange(System.Text.Encoding.UTF8.GetByteCount(history), ToolEvidence.MaxPreviewBytes - 8, ToolEvidence.MaxPreviewBytes);
+    }
+
+    [Fact]
     public async Task Stale_approval_is_rejected()
     {
         var (runId, _) = await RunUntilApprovalAsync();

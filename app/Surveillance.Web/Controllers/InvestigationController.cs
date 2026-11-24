@@ -86,6 +86,19 @@ public class InvestigationController(InvestigationService investigations, AgentS
         return Content(json, "application/json");
     }
 
+    /// <summary>
+    /// The raw output behind one tool call. Not part of the SSE stream: the browser asks for it
+    /// only when the analyst opens the evidence.
+    /// </summary>
+    [HttpGet("{id:guid}/tools/{toolCallId}/preview")]
+    public async Task<IActionResult> ToolPreview(Guid id, string toolCallId, CancellationToken ct)
+    {
+        var preview = await investigations.GetPreviewAsync(id, toolCallId, ct);
+        return preview is null
+            ? NotFound(new { message = "Data mentah untuk panggilan tool ini tidak tersedia." })
+            : Ok(new { preview.ToolCallId, preview.ToolName, preview.Preview });
+    }
+
     [HttpPost("{id:guid}/approval")]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> Approval(Guid id, [FromForm] ApprovalForm form, CancellationToken ct)

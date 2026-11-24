@@ -215,6 +215,16 @@ public sealed class InvestigationService(
         return await db.Cases.AsNoTracking().OrderByDescending(c => c.CreatedAt).Take(100).ToListAsync(ct);
     }
 
+    /// <summary>The raw output of one tool call, for the evidence view. Null when the agent sent none.</summary>
+    public async Task<ToolResultPreview?> GetPreviewAsync(Guid caseId, string toolCallId, CancellationToken ct)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        return await db.Previews.AsNoTracking()
+            .Where(p => p.CaseId == caseId && p.ToolCallId == toolCallId)
+            .OrderByDescending(p => p.Id)
+            .FirstOrDefaultAsync(ct);
+    }
+
     public async Task<List<AgentEventRecord>> GetEventsAsync(Guid caseId, long after, CancellationToken ct)
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct);

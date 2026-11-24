@@ -6,6 +6,7 @@ namespace Surveillance.Agents.Abstractions;
 public enum AgentEventType
 {
     RunStarted,
+    StepStarted,
     Token,
     ToolCallStarted,
     ToolCallFinished,

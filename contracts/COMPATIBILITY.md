@@ -6,8 +6,8 @@ pemeriksaan yang sama, sehingga hasilnya bisa dibandingkan langsung.
 
 Ringkasnya:
 
-- **Offline (model tiruan): 36 dari 36 lulus.** Sembilan skenario untuk keempat adapter.
-- **Live (model sungguhan): 12 dari 12 lulus pada uji terakhir.** Pada uji pertama, satu test LangGraph gagal sekali dan tidak muncul lagi dalam tiga uji ulang. Penjelasannya ada di bagian [Kegagalan yang tercatat](#kegagalan-yang-tercatat).
+- **Offline (model tiruan): 40 dari 40 lulus.** Sepuluh skenario untuk keempat adapter, termasuk tahap dan bukti dari CHANGE-001.
+- **Live (model sungguhan): 12 dari 12 lulus pada uji terakhir** (Tahap 8, setelah CHANGE-001). Pada uji Tahap 6a, satu test LangGraph gagal sekali dan tidak muncul lagi dalam tiga uji ulang. Penjelasannya ada di bagian [Kegagalan yang tercatat](#kegagalan-yang-tercatat).
 - Tidak ada adapter yang melanggar `contracts/events.schema.json` atau aturan urutan event di ASD.
 
 Tanggal uji: 25 November 2026.
@@ -18,7 +18,7 @@ Contract test ada di `app/Surveillance.Web.Tests/Contract/`.
 
 | Bagian | Isi |
 |---|---|
-| `AgentContractTests.cs` | Sembilan skenario offline, ditulis sekali untuk semua adapter |
+| `AgentContractTests.cs` | Sepuluh skenario offline, ditulis sekali untuk semua adapter |
 | `AdapterContractTests.cs` | Turunan per adapter, ditambah test `Live` |
 | `scenarios.json` | Giliran model tiruan, dipakai bersama oleh MAF, LangGraph, dan ADK |
 | `PythonService.cs` | Menyalakan service LangGraph atau ADK sebagai proses uvicorn sungguhan di port bebas |
@@ -54,6 +54,8 @@ Setiap skenario diperiksa dengan `EventAssertions.AssertWellFormedRun`:
 - `run_started` di awal
 - setiap tool call berpasangan
 - run diakhiri tepat satu `done` atau `error`, tanpa tool call yang masih terbuka
+- `step_started` tepat setelah `run_started` dengan `measure`, tahap hanya maju, `assess` sebelum `submit_memo`, `memo` sebelum `approval_required`
+- setiap hasil tool MCP punya `source`, dan `resultPreview` tidak lebih dari 8192 byte UTF-8
 
 | Skenario | Fake | MAF | LangGraph | ADK |
 |---|---|---|---|---|
@@ -66,6 +68,7 @@ Setiap skenario diperiksa dengan `EventAssertions.AssertWellFormedRun`:
 | Batas langkah: tepat 15 tool dijalankan, lalu `error` (`step_limit_exceeded`) | ✅ | ✅ | ✅ | ✅ |
 | `approvalId` usang ditolak (`InvalidOperationException`) | ✅ | ✅ | ✅ | ✅ |
 | Stream ulang saat menunggu tidak menghasilkan event ganda | ✅ | ✅ | ✅ | ✅ |
+| Tahap maju berurutan; hasil MCP membawa `source` dan `resultPreview`; pratinjau `idx_history` dipotong di 8192 byte (CHANGE-001) | ✅ | ✅ | ✅ | ✅ |
 
 LangGraph dan ADK diuji lewat jalur yang sama seperti di produksi: klien C#
 `HttpSseAgentClient` → HTTP dan SSE → service Python sungguhan →
@@ -75,6 +78,9 @@ Hanya model dan tool MCP yang diganti.
 ## Hasil live
 
 Model sungguhan dan server MCP idx sungguhan, saham BBCA tanggal 24 November 2026.
+Sejak Tahap 8, alur penuh juga memeriksa bahwa tahap `assess` muncul dan setiap
+hasil MCP membawa `resultPreview`; semua pemeriksaan skema dan urutan tahap
+berlaku juga untuk run live.
 
 | Skenario | MAF (gpt-5-mini) | LangGraph (qwen3-30b-a3b-instruct-2507) | ADK (gemini-3.8-flash) |
 |---|---|---|---|

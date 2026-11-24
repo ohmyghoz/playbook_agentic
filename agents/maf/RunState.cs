@@ -34,6 +34,7 @@ internal sealed class RunState
     public PendingApproval? Pending { get; set; }
     public ApprovalDecision? Decision { get; set; }
     public Memo? Memo { get; set; }
+    public InvestigationStep? Step { get; set; }
 
     /// <summary>True after the analyst approved and before submit_memo's result arrived.</summary>
     public bool AwaitingApprovedSubmit { get; set; }

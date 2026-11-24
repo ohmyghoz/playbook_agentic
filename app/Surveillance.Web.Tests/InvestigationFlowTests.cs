@@ -76,6 +76,31 @@ public partial class InvestigationFlowTests(SurveillanceFactory factory) : IClas
     }
 
     [Fact]
+    public async Task Result_previews_are_stored_apart_and_served_on_request()
+    {
+        var caseId = await factory.Investigations.StartAsync(Input(), default);
+        await factory.WaitForStatusAsync(caseId, s => s == CaseStatus.AwaitingApproval);
+
+        // Stored and streamed events keep summary and source, but not the raw output.
+        var finished = (await StoredEvents(caseId)).Where(e => e.Type == AgentEventType.ToolCallFinished).ToList();
+        Assert.All(finished, e => Assert.False(e.Payload.TryGetProperty("resultPreview", out _)));
+        var history = finished.Select(e => e.PayloadAs<ToolCallFinishedPayload>()).Single(p => p.ToolName == "idx_history");
+        Assert.Equal("yahoo", history.Source?.Provider);
+
+        var client = factory.CreateClient();
+        Assert.DoesNotContain("resultPreview", await client.GetStringAsync($"/investigations/{caseId}/events.json"));
+
+        var response = await client.GetAsync($"/investigations/{caseId}/tools/{history.ToolCallId}/preview");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var body = System.Text.Json.JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal("idx_history", body.RootElement.GetProperty("toolName").GetString());
+        Assert.EndsWith(ToolEvidence.TruncationMarker, body.RootElement.GetProperty("preview").GetString());
+
+        var missing = await client.GetAsync($"/investigations/{caseId}/tools/call_unknown/preview");
+        Assert.Equal(HttpStatusCode.NotFound, missing.StatusCode);
+    }
+
+    [Fact]
     public async Task Event_after_the_run_ended_does_not_reopen_the_case()
     {
         var caseId = await factory.Investigations.StartAsync(Input(), default);

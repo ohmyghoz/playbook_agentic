@@ -397,10 +397,29 @@ public sealed class MafAgentClient : IAgentClient
 
             FlushTokens();
 
+            // run_started comes first; every other stage is announced before the event that starts it.
+            if (type != AgentEventType.RunStarted)
+            {
+                AnnounceStep(type, (payload as ToolCallStartedPayload)?.ToolName);
+            }
+
             writer.TryWrite(AgentEvent.Create(state.RunId, ++state.Sequence, type, payload));
             if (type is AgentEventType.Done or AgentEventType.Error)
             {
                 state.Phase = RunPhase.Finished;
+            }
+            else if (type == AgentEventType.RunStarted)
+            {
+                AnnounceStep(type, null);
+            }
+        }
+
+        private void AnnounceStep(AgentEventType type, string? toolName)
+        {
+            if (InvestigationSteps.Next(state.Step, type, toolName) is { } step)
+            {
+                state.Step = step;
+                writer.TryWrite(AgentEvent.Create(state.RunId, ++state.Sequence, AgentEventType.StepStarted, InvestigationSteps.Payload(step)));
             }
         }
 

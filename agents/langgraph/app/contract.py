@@ -105,3 +105,38 @@ def tool_finished(call_id: str, name: str, ok: bool, summary: str, code: str | N
     if not ok:
         payload["error"] = {"code": code or "error", "message": (message or summary)[:500]}
     return payload
+
+
+# Evidence fields of tool_call_finished (CHANGE-001). Mirrors Surveillance.Agents.Abstractions/ToolEvidence.cs.
+SOURCE_SERVER = "idx"
+PREVIEW_MAX_BYTES = 8192
+TRUNCATION_MARKER = "\n…[dipotong]"
+
+
+def result_preview(raw: str) -> str:
+    """Cuts raw tool output at a character boundary so it fits in 8192 UTF-8 bytes, marker included."""
+    if len(raw.encode("utf-8")) <= PREVIEW_MAX_BYTES:
+        return raw
+    budget = PREVIEW_MAX_BYTES - len(TRUNCATION_MARKER.encode("utf-8"))
+    cut = raw.encode("utf-8")[:budget].decode("utf-8", errors="ignore")
+    return cut + TRUNCATION_MARKER
+
+
+def tool_source(envelope: dict[str, Any] | None) -> dict[str, Any]:
+    """provider, fetched_at and stale from an idx envelope; any of them may be missing."""
+    source: dict[str, Any] = {"server": SOURCE_SERVER}
+    if not isinstance(envelope, dict):
+        return source
+    if isinstance(envelope.get("provider"), str):
+        source["provider"] = envelope["provider"]
+    if isinstance(envelope.get("fetched_at"), str):
+        try:
+            at = datetime.fromisoformat(envelope["fetched_at"].replace("Z", "+00:00"))
+            if at.tzinfo is None:
+                at = at.replace(tzinfo=timezone.utc)
+            source["fetchedAt"] = at.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S") + "Z"
+        except ValueError:
+            pass
+    if isinstance(envelope.get("stale"), bool):
+        source["stale"] = envelope["stale"]
+    return source

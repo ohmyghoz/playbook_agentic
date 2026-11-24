@@ -26,6 +26,7 @@
     "type": {
       "enum": [
         "run_started",
+        "step_started",
         "token",
         "tool_call_started",
         "tool_call_finished",
@@ -40,6 +41,10 @@
     {
       "if": { "properties": { "type": { "const": "run_started" } } },
       "then": { "properties": { "payload": { "$ref": "#/$defs/RunStartedPayload" } } }
+    },
+    {
+      "if": { "properties": { "type": { "const": "step_started" } } },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/StepStartedPayload" } } }
     },
     {
       "if": { "properties": { "type": { "const": "token" } } },
@@ -88,6 +93,33 @@
         "maxToolCalls": { "type": "integer", "minimum": 1 }
       }
     },
+    "StepStartedPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["step", "label"],
+      "description": "Tahap alur ASD yang mulai dikerjakan. Tahap hanya maju, boleh melompati tahap, dan tidak muncul dua kali dalam satu run. Lihat CHANGE-001.",
+      "properties": {
+        "step": { "enum": ["measure", "explain", "deep_dive", "assess", "memo"] },
+        "label": { "type": "string", "minLength": 1, "description": "Nama tahap untuk ditampilkan, bahasa Indonesia." }
+      }
+    },
+    "ToolSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["server"],
+      "description": "Asal data sebuah tool MCP, diambil dari amplop JSON idx.",
+      "properties": {
+        "server": { "type": "string", "minLength": 1, "description": "Server MCP, mis. idx." },
+        "provider": { "type": ["string", "null"], "description": "Sumber data di balik server, mis. yahoo, stockbit, ipot, idx." },
+        "fetchedAt": {
+          "type": ["string", "null"],
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,7})?Z$",
+          "description": "Waktu data diambil sumber, UTC."
+        },
+        "stale": { "type": ["boolean", "null"], "description": "true jika server menyajikan salinan cache yang sudah lewat masa berlakunya." }
+      }
+    },
     "TokenPayload": {
       "type": "object",
       "additionalProperties": false,
@@ -127,6 +159,12 @@
             "code": { "type": "string", "minLength": 1, "description": "Kode dari sumber, mis. provider, blocked, not_found, timeout." },
             "message": { "type": "string" }
           }
+        },
+        "source": { "$ref": "#/$defs/ToolSource", "description": "Wajib untuk tool MCP yang memberi hasil; tidak ada untuk tool lokal atau panggilan yang ditutup agent." },
+        "resultPreview": {
+          "type": "string",
+          "maxLength": 8192,
+          "description": "Keluaran mentah tool, dipotong maksimum 8192 byte UTF-8 dengan penanda di akhir. Aplikasi menyimpannya terpisah dan tidak meneruskannya lewat SSE."
         }
       },
       "if": { "properties": { "status": { "const": "error" } } },

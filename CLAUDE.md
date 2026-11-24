@@ -396,7 +396,7 @@ Selesai jika: contract test kedua use case lulus atau setiap kegagalan dijelaska
   - [x] Tahap 6a: contract test, commit `d69b5f7`
   - [ ] ~~Tahap 6b: use case 2 di satu solusi~~ dibatalkan 2026-11-25, digantikan Tahap 13 sampai 15
 - [x] Tahap 7: fondasi untuk Bagian IV
-- [ ] Tahap 8: evolusi kontrak untuk progres dan bukti
+- [x] Tahap 8: evolusi kontrak untuk progres dan bukti
 - [ ] Tahap 9: transport (Bab 10)
 - [ ] Tahap 10: pola UI (Bab 11)
 - [ ] Tahap 11: approval (Bab 12)
@@ -452,4 +452,11 @@ Tambahkan satu baris per keputusan: tanggal, keputusan, alasan singkat.
 - 2026-11-25: Tahap 7b memakai update bersyarat (`ExecuteUpdateAsync` dengan `Status == AwaitingApproval`) di dalam transaksi, bukan `rowversion`: tidak butuh migrasi, dan berjalan sama di SQL Server dan SQLite test. Transaksi dijalankan lewat execution strategy karena `EnableRetryOnFailure` aktif.
 - 2026-11-25: Tahap 7c: event yang meminta transisi tidak sah (misalnya token setelah `done`) tetap disimpan, tapi status kasus tidak diubah dan aplikasi menulis peringatan di log. Kode yang mengubah status di luar event (`SetRunIdAsync`, `DecideAsync`) memakai `CaseStateMachine.Move`, yang melempar `InvalidCaseTransitionException`.
 - 2026-11-25: Tahap 7d: status dan `sequence` terakhir per kasus disimpan di memori `RunPump` selama pump berjalan; duplikat ditangkap indeks unik. Waktu per event di Azure SQL turun dari sekitar 120 ms menjadi 75 ms. `MinBatchSize(1)` dicoba dan tidak memberi beda, jadi tidak dipakai. Detail di `docs/NOTES-PERSIST.md`.
+- 2026-11-25: `step_started` memakai lima tahap dari enam langkah alur ASD; langkah 1 (cek status Stockbit) digabung ke langkah 2: `measure` (ukur penyimpangan), `explain` (cari penjelasan wajar), `deep_dive` (gali broker dan arus asing), `assess` (nilai bukti), `memo` (susun memo).
+- 2026-11-25: Halaman `/Lab` aktif bila solusi aktif di halaman Setting adalah `fake` (bukan hanya nilai awal `Agent:Provider`).
+- 2026-11-25: Nilai awal konfigurasi: approval kedaluwarsa 24 jam, penanda "hampir kedaluwarsa" 4 jam sebelumnya, di `/Lab` 2 menit; pengambilan kasus lepas setelah 15 menit tidak aktif; retensi event 90 hari, pratinjau data mentah 30 hari, `App_Data/maf-runs` 30 hari.
+- 2026-11-25: Use case 2: bila tool berbasis IPOT (`idx_bandar_screen`, `idx_bandar`, `idx_bandar_broker`) masih gagal saat dicoba, penyaringan awal memakai `idx_screen` dan `idx_history`, worker broker memakai `idx_broker` (Stockbit) dan `idx_market_brokers`; tabel tool per peran diperbarui.
+- 2026-11-25: Tahap 8 (CHANGE-001): tahap ditentukan adapter dari nama tool, bukan dilaporkan model, supaya urutannya sama di keempat solusi dan bisa diuji. `measure` tepat setelah `run_started`, `assess` sebelum `submit_memo` pertama, `memo` sebelum `approval_required` pertama; tahap hanya maju. Aturan ada di `InvestigationSteps.cs` (fake, MAF) dan `steps.py` (LangGraph, ADK, salinan sama).
+- 2026-11-25: Tahap 8: `source` berbentuk objek (`server`, `provider`, `fetchedAt`, `stale`) dari amplop idx, bukan string, supaya waktu data bisa ditampilkan di panel bukti. `resultPreview` dipotong di batas karakter UTF-8 dengan penanda `
+…[dipotong]` di dalam batas 8192 byte. Aplikasi menyimpan pratinjau di tabel `ToolResultPreviews` dan endpoint `GET /investigations/{id}/tools/{toolCallId}/preview`.
 - 2026-11-24: Catatan keamanan: server Azure SQL punya aturan firewall `AllowAll-Experiment` (0.0.0.0–255.255.255.255). Belum diubah; sebaiknya dihapus dan diganti aturan per IP.

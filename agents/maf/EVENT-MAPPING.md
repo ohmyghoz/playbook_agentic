@@ -41,6 +41,23 @@ diuji dengan `IChatClient` tiruan.
 | MCP tidak bisa dihubungi saat run mulai | `error` (`mcp_unavailable`, `retryable: true`) | |
 | Giliran model yang hanya berisi teks | Pesan "Lanjutkan…" ke model | Dianggap narasi. Setelah 3 giliran teks berturut-turut tanpa tool call, `error` (`model_error`). Aturan sama dengan LangGraph |
 
+## Tahap dan bukti (CHANGE-001)
+
+| Event atau field | Asal di adapter |
+|---|---|
+| `step_started` | `Emitter.Event` menanyakan `InvestigationSteps.Next` sebelum menulis `tool_call_started` atau `approval_required`, dan sesudah menulis `run_started`. Tahap terakhir disimpan di `RunState.Step`, jadi tidak terulang setelah jeda approval. |
+| `tool_call_finished.source` | `ToolResultSummarizer` membaca `provider`, `fetched_at`, dan `stale` dari amplop idx yang sudah ia cari untuk ringkasan (`ToolEvidence.Source`). |
+| `tool_call_finished.resultPreview` | Teks amplop idx paling dalam, tanpa pembungkus `{"$type":"text","text":…}` dari `McpClientTool` dan tanpa awalan `[toolCallId: …]`, dipotong dengan `ToolEvidence.Preview`. |
+
+Panggilan yang ditutup adapter (`CloseOpenCalls`), batas langkah, dan
+exception dari tool tidak membawa `source` maupun `resultPreview`, karena tidak
+ada keluaran dari server MCP.
+
+Aturan tahap tidak diambil dari framework. MAF tidak punya konsep tahap
+alur kerja, dan model tidak diminta melaporkannya. Tahap ditentukan dari nama
+tool, sama persis dengan ketiga adapter lain. Detail dan alasannya ada di
+`contracts/CHANGE-001-step-and-evidence.md`.
+
 ## Perbedaan dengan kontrak dan cara menyerapnya
 
 1. **`sequence` dan `timestamp`.** MAF tidak punya nomor urut event. Adapter memberi nomor per run, dan nomor itu tersimpan bersama state run supaya berlanjut setelah resume.

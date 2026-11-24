@@ -31,15 +31,34 @@ public static class ToolResultSummarizer
             return new ToolCallFinishedPayload(callId, toolName, ToolCallStatus.Ok, "Memo disetujui analis.");
         }
 
+        JsonElement? envelope = null;
+        var raw = text;
         try
         {
-            var envelope = FindEnvelope(text);
-            if (envelope is null)
+            envelope = FindEnvelope(text, out raw);
+        }
+        catch (JsonException)
+        {
+            // Not JSON: keep the text as the preview and summarize generically.
+        }
+
+        // The data behind the summary, for the evidence view (CHANGE-001).
+        return Describe(callId, toolName, envelope) with
+        {
+            Source = ToolEvidence.Source(envelope),
+            ResultPreview = ToolEvidence.Preview(raw),
+        };
+    }
+
+    private static ToolCallFinishedPayload Describe(string callId, string toolName, JsonElement? envelope)
+    {
+        try
+        {
+            if (envelope is not { } root)
             {
                 return new ToolCallFinishedPayload(callId, toolName, ToolCallStatus.Ok, "Data diterima.");
             }
 
-            var root = envelope.Value;
             if (root.TryGetProperty("error", out var error))
             {
                 var code = error.TryGetProperty("code", out var c) ? c.GetString() ?? "error" : "error";
@@ -76,16 +95,21 @@ public static class ToolResultSummarizer
         _ => $"Data {toolName} tidak tersedia ({code}).",
     };
 
-    /// <summary>Finds the idx JSON envelope, which may be wrapped in MCP content or prefixed by the call id.</summary>
-    private static JsonElement? FindEnvelope(string text)
+    /// <summary>
+    /// Finds the idx JSON envelope, which may be wrapped in MCP content or prefixed by the call id.
+    /// <paramref name="raw"/> is the innermost tool output text, without the wrapping.
+    /// </summary>
+    private static JsonElement? FindEnvelope(string text, out string raw)
     {
+        raw = text;
         var start = text.IndexOf('{');
         if (start < 0)
         {
             return null;
         }
 
-        using var doc = JsonDocument.Parse(text[start..]);
+        raw = text[start..];
+        using var doc = JsonDocument.Parse(raw);
         var root = doc.RootElement;
         if (root.TryGetProperty("schema", out _) || root.TryGetProperty("error", out _))
         {
@@ -95,7 +119,7 @@ public static class ToolResultSummarizer
         // A single MCP text content, as McpClientTool returns it: { "$type": "text", "text": "<envelope>" }
         if (root.TryGetProperty("text", out var single) && single.ValueKind == JsonValueKind.String)
         {
-            return FindEnvelope(single.GetString()!);
+            return FindEnvelope(single.GetString()!, out raw);
         }
 
         // idx_stockbit_status answers with a bare object instead of an envelope.
@@ -112,7 +136,7 @@ public static class ToolResultSummarizer
             {
                 if (item.TryGetProperty("text", out var inner) && inner.GetString() is { } innerText)
                 {
-                    return FindEnvelope(innerText);
+                    return FindEnvelope(innerText, out raw);
                 }
             }
         }

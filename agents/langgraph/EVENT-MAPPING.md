@@ -45,6 +45,22 @@ Service membaca `graph.astream(..., stream_mode=["messages", "custom"], version=
 | MCP tidak bisa dihubungi saat run mulai | `error` (`mcp_unavailable`, `retryable: true`) | |
 | `POST /runs/{id}/cancel` | `tool_call_finished` (`cancelled`) untuk tool yang terbuka, lalu `done` (`cancelled`) | Task asyncio dibatalkan; jika run sedang menunggu, service langsung menutupnya |
 
+## Tahap dan bukti (CHANGE-001)
+
+| Event atau field | Asal di service |
+|---|---|
+| `step_started` | `RunManager._emit` menanyakan `steps.next_step` untuk setiap event. Tahap baru dipancarkan sebelum `tool_call_started` dan `approval_required`, atau sesudah `run_started`. Tahap terakhir disimpan di `RunInfo.step` (`service.db`), sehingga tetap benar setelah service dinyalakan ulang di tengah jeda approval. |
+| `tool_call_finished.source` | `summarizer.summarize` membaca amplop idx dari `ToolMessage` dan memanggil `contract.tool_source`. |
+| `tool_call_finished.resultPreview` | Teks amplop paling dalam dari konten `ToolMessage`, dipotong dengan `contract.result_preview`. |
+
+Node `tools` dan `review` di graph tidak berubah. Pemetaan terjadi di stream
+`custom` yang sudah ada.
+
+Aturan tahap tidak diambil dari framework. LangGraph tidak punya konsep tahap
+alur kerja, dan model tidak diminta melaporkannya. Tahap ditentukan dari nama
+tool, sama persis dengan ketiga adapter lain. Detail dan alasannya ada di
+`contracts/CHANGE-001-step-and-evidence.md`.
+
 ## Perbedaan dengan kontrak dan cara menyerapnya
 
 1. **`sequence` dan penyimpanan event.** LangGraph tidak memberi nomor urut event. Service memberi nomor per run dan menyimpan setiap event di `data/service.db`, sehingga event bisa diputar ulang dan nomornya tetap berlanjut setelah restart.

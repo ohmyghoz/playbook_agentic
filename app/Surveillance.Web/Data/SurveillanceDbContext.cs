@@ -9,6 +9,7 @@ public class SurveillanceDbContext(DbContextOptions<SurveillanceDbContext> optio
     public DbSet<AgentEventRecord> Events => Set<AgentEventRecord>();
     public DbSet<ApprovalDecisionRecord> Decisions => Set<ApprovalDecisionRecord>();
     public DbSet<AppSetting> Settings => Set<AppSetting>();
+    public DbSet<ToolResultPreview> Previews => Set<ToolResultPreview>();
 
     /// <summary>All timestamps are stored as UTC and read back with <see cref="DateTimeKind.Utc"/>.</summary>
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder) =>
@@ -37,6 +38,17 @@ public class SurveillanceDbContext(DbContextOptions<SurveillanceDbContext> optio
             e.Property(x => x.Type).HasMaxLength(32);
             e.HasIndex(x => new { x.RunId, x.Sequence }).IsUnique();
             e.HasIndex(x => new { x.CaseId, x.Sequence });
+        });
+
+        modelBuilder.Entity<ToolResultPreview>(e =>
+        {
+            e.ToTable("ToolResultPreviews");
+            e.Property(x => x.RunId).HasMaxLength(128);
+            e.Property(x => x.ToolCallId).HasMaxLength(128);
+            e.Property(x => x.ToolName).HasMaxLength(64);
+            e.HasIndex(x => new { x.RunId, x.ToolCallId }).IsUnique();
+            e.HasIndex(x => new { x.CaseId, x.ToolCallId });
+            e.HasOne<InvestigationCase>().WithMany().HasForeignKey(x => x.CaseId);
         });
 
         modelBuilder.Entity<AppSetting>(e =>

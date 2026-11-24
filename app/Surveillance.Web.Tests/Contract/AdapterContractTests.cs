@@ -86,6 +86,9 @@ public abstract class LiveAgentContractTests
         var events = await DrainLive(client, runId);
         AssertPaused(events);
         Assert.Contains(events, e => e.Type == AgentEventType.ToolCallStarted);
+        EventAssertions.AssertPreviewsPresent(events);
+        Assert.Contains(events, e => e.Type == AgentEventType.StepStarted
+                                     && e.PayloadAs<StepStartedPayload>().Step == InvestigationStep.Assess);
 
         await client.ResumeAsync(runId, new ApprovalDecision(
             events[^1].PayloadAs<ApprovalRequiredPayload>().ApprovalId, Decision.Approve, "live-test"), default);

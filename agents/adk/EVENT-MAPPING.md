@@ -39,6 +39,22 @@ Service membaca `runner.run_async(..., run_config=RunConfig(streaming_mode=Strea
 | `McpToolset.get_tools()` gagal atau kosong saat run mulai | `error` (`mcp_unavailable`, `retryable: true`) | |
 | `POST /runs/{id}/cancel` | `tool_call_finished` (`cancelled`) untuk tool yang terbuka, lalu `done` (`cancelled`) | `abort_signal.set()`; jika run sedang menunggu, service langsung menutupnya |
 
+## Tahap dan bukti (CHANGE-001)
+
+| Event atau field | Asal di service |
+|---|---|
+| `step_started` | `RunManager._emit` menanyakan `steps.next_step` untuk setiap event, sama seperti LangGraph. Tahap terakhir disimpan di `RunInfo.step` (`service.db`). |
+| `tool_call_finished.source` | `summarizer.summarize` membaca amplop idx dari `function_response` ADK (`{"content":[…]}` atau `{"error": "…"}`) dan memanggil `contract.tool_source`. |
+| `tool_call_finished.resultPreview` | Teks amplop paling dalam dari `function_response`, dipotong dengan `contract.result_preview`. |
+
+`contract.py`, `summarizer.py`, dan `steps.py` sama persis dengan milik
+LangGraph.
+
+Aturan tahap tidak diambil dari framework. ADK tidak punya konsep tahap
+alur kerja, dan model tidak diminta melaporkannya. Tahap ditentukan dari nama
+tool, sama persis dengan ketiga adapter lain. Detail dan alasannya ada di
+`contracts/CHANGE-001-step-and-evidence.md`.
+
 ## Perbedaan dengan kontrak dan cara menyerapnya
 
 1. **`sequence` dan penyimpanan event.** ADK menyimpan event-nya sendiri di session, tapi bentuknya bukan katalog dan tidak bernomor urut. Service memberi nomor per run dan menyimpan event katalog di `data/service.db`, dengan kode yang sama seperti LangGraph.
