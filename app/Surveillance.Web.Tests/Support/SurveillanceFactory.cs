@@ -1,4 +1,6 @@
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
@@ -12,13 +14,15 @@ namespace Surveillance.Web.Tests.Support;
 
 /// <summary>
 /// Runs the real application with the fake agent and a throwaway SQLite file
-/// instead of SQL Server.
+/// instead of SQL Server. Requests are signed in by <see cref="TestAuthHandler"/>
+/// unless <see cref="UseCookieAuth"/> keeps the application's own cookie sign-in.
 /// </summary>
 public class SurveillanceFactory : WebApplicationFactory<Program>
 {
     private readonly string _dbPath = Path.Combine(Path.GetTempPath(), $"surveillance-test-{Guid.NewGuid():N}.db");
 
     protected virtual int ToolDelayMs => 0;
+    protected virtual bool UseCookieAuth => false;
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
@@ -36,6 +40,13 @@ public class SurveillanceFactory : WebApplicationFactory<Program>
             services.RemoveAll<IDbContextOptionsConfiguration<SurveillanceDbContext>>();
             services.AddDbContextFactory<SurveillanceDbContext>(o => o.UseSqlite($"Data Source={_dbPath}"));
         });
+
+        if (!UseCookieAuth)
+        {
+            builder.ConfigureTestServices(services => services
+                .AddAuthentication(TestAuthHandler.Scheme)
+                .AddScheme<AuthenticationSchemeOptions, TestAuthHandler>(TestAuthHandler.Scheme, _ => { }));
+        }
     }
 
     protected override IHost CreateHost(IHostBuilder builder)
@@ -51,6 +62,14 @@ public class SurveillanceFactory : WebApplicationFactory<Program>
     }
 
     public InvestigationService Investigations => Services.GetRequiredService<InvestigationService>();
+
+    /// <summary>A client signed in as the given demo account (see <see cref="TestAuthHandler"/>).</summary>
+    public HttpClient CreateClientAs(string userName)
+    {
+        var client = CreateClient();
+        client.DefaultRequestHeaders.Add(TestAuthHandler.Header, userName);
+        return client;
+    }
     public RunPump Pump => Services.GetRequiredService<RunPump>();
 
     public async Task<InvestigationCase> WaitForStatusAsync(Guid caseId, Func<CaseStatus, bool> done, int timeoutMs = 10_000)
@@ -86,6 +105,12 @@ public class SurveillanceFactory : WebApplicationFactory<Program>
             // Best effort; the file lives in the temp directory.
         }
     }
+}
+
+/// <summary>The application's real cookie sign-in, for the login flow.</summary>
+public class CookieAuthSurveillanceFactory : SurveillanceFactory
+{
+    protected override bool UseCookieAuth => true;
 }
 
 /// <summary>Slow tools, so a run can be stopped mid-flight.</summary>

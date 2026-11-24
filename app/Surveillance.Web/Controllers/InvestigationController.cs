@@ -92,16 +92,19 @@ public class InvestigationController(InvestigationService investigations, AgentS
     {
         if (!ModelState.IsValid || form.Decision is null)
         {
-            return BadRequest(new { message = "Pilih keputusan dan isi nama analis." });
+            return BadRequest(new { message = "Pilih keputusan, lalu kirim lagi." });
         }
 
-        var result = await investigations.DecideAsync(id, form.ApprovalId, form.Decision.Value, form.Comment, form.DecidedBy, ct);
-        return result switch
+        // The decision is recorded under the signed-in user, never a name typed into the form.
+        var outcome = await investigations.DecideAsync(id, form.ApprovalId, form.Decision.Value, form.Comment,
+            User.Identity!.Name!, ct);
+        return outcome.Result switch
         {
             DecisionResult.Accepted => Ok(new { message = "Keputusan tersimpan. Agent melanjutkan investigasi." }),
             DecisionResult.CaseNotFound => NotFound(new { message = "Kasus tidak ditemukan." }),
             DecisionResult.CommentRequired => BadRequest(new { message = "Tulis komentar untuk analis agent sebelum meminta revisi atau menolak." }),
             DecisionResult.StaleApproval => Conflict(new { message = "Draf memo ini sudah diganti. Muat ulang halaman untuk melihat draf terbaru." }),
+            DecisionResult.AlreadyDecided => Conflict(new { message = $"Kasus ini sudah diputuskan oleh {outcome.DecidedBy ?? "analis lain"}. Muat ulang halaman untuk melihat keputusannya." }),
             _ => Conflict(new { message = "Investigasi ini tidak sedang menunggu keputusan." }),
         };
     }

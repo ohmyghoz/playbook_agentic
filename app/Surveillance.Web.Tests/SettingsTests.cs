@@ -31,7 +31,7 @@ public partial class SettingsTests(SurveillanceFactory factory) : IClassFixture<
         Assert.False(choices.Single(c => c.Key == "maf").Ready);
         Assert.False(choices.Single(c => c.Key == "langgraph").Ready);
 
-        var page = await factory.CreateClient().GetStringAsync("/settings");
+        var page = await factory.CreateClientAs("supervisor").GetStringAsync("/settings");
         Assert.Contains("Dipakai sekarang", page);
         Assert.Contains("value=\"adk\"", page);
     }
@@ -39,7 +39,7 @@ public partial class SettingsTests(SurveillanceFactory factory) : IClassFixture<
     [Fact]
     public async Task Saving_through_the_form_changes_the_solution_for_new_investigations()
     {
-        var client = factory.CreateClient();
+        var client = factory.CreateClientAs("supervisor");
         var page = await client.GetStringAsync("/settings");
         var token = AntiforgeryToken().Match(page).Groups[1].Value;
 

@@ -1,10 +1,13 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Surveillance.Web.Auth;
 using Surveillance.Web.Investigations;
 using Surveillance.Web.Models;
 
 namespace Surveillance.Web.Controllers;
 
 [Route("settings")]
+[Authorize(Roles = Roles.Supervisor)]
 public class SettingsController(AgentSelection selection) : Controller
 {
     [HttpGet("")]

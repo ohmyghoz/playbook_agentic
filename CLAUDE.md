@@ -395,7 +395,7 @@ Selesai jika: contract test kedua use case lulus atau setiap kegagalan dijelaska
 - [x] Tahap 6: contract test dan use case 2 (dipecah)
   - [x] Tahap 6a: contract test, commit `d69b5f7`
   - [ ] ~~Tahap 6b: use case 2 di satu solusi~~ dibatalkan 2026-11-25, digantikan Tahap 13 sampai 15
-- [ ] Tahap 7: fondasi untuk Bagian IV
+- [x] Tahap 7: fondasi untuk Bagian IV
 - [ ] Tahap 8: evolusi kontrak untuk progres dan bukti
 - [ ] Tahap 9: transport (Bab 10)
 - [ ] Tahap 10: pola UI (Bab 11)
@@ -448,4 +448,8 @@ Tambahkan satu baris per keputusan: tanggal, keputusan, alasan singkat.
 - 2026-11-25: Contract test (Tahap 6a): satu kelas abstrak `AgentContractTests` untuk keempat adapter, model tiruan bersama dari `scenarios.json` (service Python lewat `AGENT_SCRIPT`), test `Live` di belakang `RUN_LIVE_TESTS=1`. Hasil di `contracts/COMPATIBILITY.md`.
 - 2026-11-25: Halaman Setting untuk memilih solusi agent saat aplikasi berjalan (diminta). `AgentClientRegistry` menyimpan keempat adapter dan membuatnya saat pertama dipakai; pilihan aktif disimpan di tabel `Settings`; `Agent:Provider` jadi nilai awal. Kasus memakai adapter yang tercatat di `InvestigationCase.Provider`, sehingga run yang sedang berjalan tidak ikut berpindah. Nama model hanya ditampilkan; mengganti model per solusi tidak termasuk karena butuh perubahan `agent-service-api.md`.
 - 2026-11-25: `CLAUDE-lanjutan.md` digabung ke file ini (diminta): bagian Tujuan tambahan, Keputusan kontrak, Rincian use case 2, dan Tahapan lanjutan (Tahap 7 sampai 15) disalin apa adanya; Tahap 6a ditandai selesai (commit `d69b5f7`); Tahap 6b dibatalkan dan digantikan Tahap 13 sampai 15. Perubahan kontrak di tabel Keputusan kontrak (`step_started`, `source`/`resultPreview`, `agentName`/`worker_started`/`worker_finished`/`useCase`) sudah disetujui untuk Tahap 8 dan 13.
+- 2026-11-25: Tahap 7a: login demo dengan memilih akun tanpa kata sandi (dipilih). Tiga akun di `DemoUsers` (appsettings): `analis1` Ni Kadek Ayu Lestari, `analis2` Marthen Rumbiak (Analis), `supervisor` Siti Rahmah Siregar (Supervisor). Semua halaman butuh login (fallback policy); halaman Setting hanya untuk Supervisor. `DecidedBy` berisi nama tampilan dari klaim `ClaimTypes.Name`. Test memakai `TestAuthHandler` (header `X-Test-User`), kecuali `LoginFlowTests` yang memakai cookie sungguhan.
+- 2026-11-25: Tahap 7b memakai update bersyarat (`ExecuteUpdateAsync` dengan `Status == AwaitingApproval`) di dalam transaksi, bukan `rowversion`: tidak butuh migrasi, dan berjalan sama di SQL Server dan SQLite test. Transaksi dijalankan lewat execution strategy karena `EnableRetryOnFailure` aktif.
+- 2026-11-25: Tahap 7c: event yang meminta transisi tidak sah (misalnya token setelah `done`) tetap disimpan, tapi status kasus tidak diubah dan aplikasi menulis peringatan di log. Kode yang mengubah status di luar event (`SetRunIdAsync`, `DecideAsync`) memakai `CaseStateMachine.Move`, yang melempar `InvalidCaseTransitionException`.
+- 2026-11-25: Tahap 7d: status dan `sequence` terakhir per kasus disimpan di memori `RunPump` selama pump berjalan; duplikat ditangkap indeks unik. Waktu per event di Azure SQL turun dari sekitar 120 ms menjadi 75 ms. `MinBatchSize(1)` dicoba dan tidak memberi beda, jadi tidak dipakai. Detail di `docs/NOTES-PERSIST.md`.
 - 2026-11-24: Catatan keamanan: server Azure SQL punya aturan firewall `AllowAll-Experiment` (0.0.0.0–255.255.255.255). Belum diubah; sebaiknya dihapus dan diganti aturan per IP.

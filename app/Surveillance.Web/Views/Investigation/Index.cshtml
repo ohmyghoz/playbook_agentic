@@ -14,7 +14,10 @@
                 <p class="text-muted small">Isi data saham yang terdeteksi menyimpang. Agent akan menyusun draf memo dan menunggu keputusan Anda.</p>
                 <p class="small mb-3">
                     Agent aktif: <strong>@Model.ActiveAgent</strong>
-                    · <a asp-controller="Settings" asp-action="Index">Ubah di Setting</a>
+                    @if (User.IsInRole(Surveillance.Web.Auth.Roles.Supervisor))
+                    {
+                        <text>· <a asp-controller="Settings" asp-action="Index">Ubah di Setting</a></text>
+                    }
                 </p>
                 <form asp-action="Start" method="post">
                     <div asp-validation-summary="ModelOnly" class="text-danger"></div>

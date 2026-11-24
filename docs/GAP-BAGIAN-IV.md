@@ -13,6 +13,11 @@ Status:
 Kondisi kode yang dipetakan: commit `e1ef9c2` (Tahap 5), ditambah contract
 test Tahap 6a yang belum di-commit. Nomor baris merujuk ke kondisi itu.
 
+Diperbarui setelah Tahap 7 (25 November 2026): autentikasi demo, keputusan
+approval yang aman dari konkurensi, state machine kasus, penyimpanan event yang
+lebih cepat, dan halaman error berbahasa Indonesia. Butir yang berubah merujuk
+ke nama file dan method, bukan nomor baris, karena nomor baris lama sudah bergeser.
+
 ## Ringkasan
 
 | Bab | Ya | Sebagian | Belum |
@@ -33,8 +38,6 @@ Kekurangan terbesar:
 
 - hanya ada satu transport (SSE); polling dan SignalR belum ada.
 - semua pola UI ada di satu view dan satu file JavaScript, belum dipecah per pola seperti format katalog Bab 11.
-- belum ada autentikasi, jadi jejak audit hanya mencatat nama yang diketik analis.
-- keputusan approval dari dua analis yang bersamaan belum aman (lihat Bab 12).
 - use case 2, retensi data, dan notifikasi belum ada.
 
 Butir yang **butuh perubahan kontrak event** ditandai 🔶 dan dirangkum di bagian akhir.
@@ -54,6 +57,9 @@ File yang paling sering dirujuk:
 | JavaScript | `app/Surveillance.Web/wwwroot/js/investigation.js` |
 | Pembaca event di latar belakang | `app/Surveillance.Web/Investigations/RunPump.cs` |
 | Logika kasus dan approval | `app/Surveillance.Web/Investigations/InvestigationService.cs` |
+| Status kasus dan transisi yang sah | `app/Surveillance.Web/Investigations/CaseStateMachine.cs` |
+| Autentikasi demo | `app/Surveillance.Web/Auth/DemoUsers.cs`, `Controllers/AccountController.cs`, `Views/Account/Login.cshtml` |
+| Halaman error | `app/Surveillance.Web/Controllers/HomeController.cs` (`Error`), `Models/ErrorViewModel.cs`, `Views/Shared/Error.cshtml` |
 | Siaran event ke browser | `app/Surveillance.Web/Investigations/EventBroadcaster.cs` |
 | Pemulihan saat start | `app/Surveillance.Web/Investigations/StartupRecovery.cs` |
 | Entitas dan DbContext | `app/Surveillance.Web/Data/Entities.cs`, `SurveillanceDbContext.cs`, `Data/Migrations/` |
@@ -74,11 +80,12 @@ File yang paling sering dirujuk:
 | Memilih transport | **Belum** | – | Tidak ada perbandingan atau pilihan transport di aplikasi. Butuh polling dan SignalR dulu, lalu tabel pertimbangan (arah komunikasi, proxy, skala, dukungan browser). |
 | Demo 10-1: SSE vs polling berdampingan | **Belum** | – | Butuh halaman demo dengan dua panel untuk kasus yang sama: kiri `EventSource`, kanan polling `events.json?after=` tiap N detik, ditambah penghitung jumlah request dan jeda. Endpoint yang dibutuhkan sudah ada. |
 
-Catatan teknis untuk Bab 10: `RunPump.PersistAsync` (`RunPump.cs:65-89`)
-menjalankan tiga query per event ke Azure SQL sebelum event dikirim ke
-browser. Dari Southeast Asia ini sekitar 300 ms per event, sehingga aliran teks
-kurang halus. Ini contoh nyata pertukaran "simpan dulu, baru siarkan" yang
-layak dibahas, sekaligus bahan perbaikan.
+Catatan teknis untuk Bab 10: `RunPump.PersistAsync` menyimpan setiap event ke
+Azure SQL sebelum event dikirim ke browser. Sejak Tahap 7, satu event butuh
+satu perjalanan ke database, bukan tiga. Waktu per event turun dari sekitar
+120 ms menjadi sekitar 75 ms. Pengukuran dan alasannya ada di
+`docs/NOTES-PERSIST.md`. Ini contoh nyata pertukaran "simpan dulu, baru
+siarkan" yang layak dibahas.
 
 ## Bab 11: Pola UI/UX Agentic di View
 
@@ -95,7 +102,7 @@ jadi pemecahannya bersifat mekanis.
 | Progres multi-langkah | **Sebagian** | Penghitung `x / 15` (`investigation.js`, `updateToolCount`); `maxToolCalls` di `run_started` | Belum ada daftar tahap seperti di ASD (ukur penyimpangan → cari penjelasan → gali broker/asing → nilai bukti → memo). Bisa ditebak di UI dari nama tool, atau 🔶 dengan event/field langkah yang eksplisit dari agent. |
 | Tampilan bukti dan sumber data | **Sebagian** | `renderMemo` (`investigation.js:207-270`): setiap temuan punya tautan ke kartu tool call (`#tool-<id>`, disorot lewat `:target`), daftar "Data tidak tersedia"; `Memo.findings[].evidence[]` di skema | Analis hanya melihat ringkasan, tidak bisa membuka data mentah yang dipakai agent (sengaja: kontrak hanya membawa `summary`). Sumber data (Stockbit/IPOT/Yahoo) hanya tersirat di teks ringkasan. Menampilkan data mentah butuh 🔶 field atau endpoint baru. |
 | Tombol stop | **Ya** | `Details.cshtml:32`, `investigation.js:315-326` | Belum ada konfirmasi sebelum menghentikan (sengaja tanpa dialog), dan belum ada pesan bahwa event yang sudah masuk tetap tersimpan sebelum tombol ditekan. Pesan itu baru muncul setelah run berhenti. |
-| Error yang manusiawi (`error`) | **Ya** | Banner `Details.cshtml:52-56`, `investigation.js:115-121`; pesan bahasa Indonesia dari adapter; tombol "Mulai ulang dengan data yang sama" untuk `retryable: true` (`InvestigationController.cs:39`); kegagalan per tool tampil merah dengan alasan | Error non-retryable belum memberi langkah berikutnya. Error HTTP pada aplikasi (misalnya 500 saat start) masih memakai halaman error bawaan template. |
+| Error yang manusiawi (`error`) | **Ya** | Banner `Details.cshtml:52-56`, `investigation.js:115-121`; pesan bahasa Indonesia dari adapter; tombol "Mulai ulang dengan data yang sama" untuk `retryable: true` (`InvestigationController.cs:39`); kegagalan per tool tampil merah dengan alasan | Error non-retryable belum memberi langkah berikutnya. Error HTTP aplikasi (404, 403, 500) sudah memakai halaman berbahasa Indonesia yang menjelaskan apa yang terjadi dan langkah berikutnya (`HomeController.Error`, `ErrorViewModel.ForStatus`). Respons JSON dari endpoint approval tidak diubah. |
 | Menyatukan: halaman investigasi UMA utuh | **Ya** | `Details.cshtml`, `investigation.js`, `History` (`InvestigationController.cs:56`) untuk putar ulang | Sudah diuji di browser untuk keempat provider. |
 | Menegosiasikan event tambahan dengan pembuat agent | **Sebagian** | Aturan di `CLAUDE.md` (kontrak hanya berubah dengan persetujuan), `EVENT-MAPPING.md` per solusi, `contracts/COMPATIBILITY.md` (Tahap 6a) | Proses dan dokumennya ada, tapi belum ada contoh negosiasi yang tuntas. Kandidat contoh paling dekat: field `agentName` untuk use case 2, atau event indikator berpikir. |
 | Format katalog: partial view + JavaScript per pola | **Belum** | – | Butuh pemecahan menjadi partial view (misalnya `_Narrative.cshtml`, `_ToolCalls.cshtml`, `_ApprovalCard.cshtml`, `_ErrorBanner.cshtml`) dan modul JavaScript per pola. |
@@ -110,9 +117,9 @@ jadi pemecahannya bersifat mekanis.
 | Kartu approval, tiga keputusan | **Ya** | Template `Details.cshtml:95-121`, `addApproval`/`submitDecision` (`investigation.js:172`, `:281`), endpoint `InvestigationController.cs:85-103`, antiforgery | Komentar wajib untuk revisi dan tolak sudah divalidasi di browser dan server. |
 | Jeda dan lanjut ujung ke ujung lewat `IAgentClient` | **Ya** | `IAgentClient.ResumeAsync`, `InvestigationService.DecideAsync` (`:87-146`), `RunPump.Start`; contract test `Approve_pauses...`, `Revise_produces...` untuk keempat adapter | Terbukti juga melewati restart service LangGraph di browser. |
 | Antrean approval untuk analis | **Sebagian** | Daftar kasus `Index.cshtml:69-100` dengan status "Menunggu keputusan analis" | Belum ada halaman antrean khusus (filter status, urut paling lama menunggu, jumlah), penugasan ke analis, atau penanda kasus yang sedang dibuka orang lain. |
-| Kasus tepi: approval tak kunjung datang, analis lain melanjutkan | **Sebagian** | Pengecekan `approvalId` usang (`InvestigationService.cs:107-116`, HTTP 409 di controller), `DecisionResult.StaleApproval` | Belum ada batas waktu, pengingat, atau kedaluwarsa approval (ASD sengaja tanpa batas waktu). **Ada celah konkurensi**: `DecideAsync` membaca status lalu menyimpan tanpa penguncian. Jika dua analis menekan tombol hampir bersamaan, keduanya lolos pengecekan, dua keputusan tersimpan, dan panggilan `ResumeAsync` kedua gagal, lalu run ditutup dengan `error internal` (`:136-141`). Perlu concurrency token (misalnya `rowversion` pada `InvestigationCase`) atau update bersyarat. Kedaluwarsa yang diputuskan agent butuh 🔶. |
-| Jejak audit: "siapa menyetujui ini?" | **Sebagian** | Tabel `ApprovalDecisionRecord` (`Entities.cs:56-65`: keputusan, komentar, `DecidedBy`, `DecidedAt`, `ApprovalId`), daftar "Keputusan analis" di `Details.cshtml:76`, event tersimpan di `AgentEventRecord` | Belum ada autentikasi (`Program.cs` tidak memakai `AddAuthentication`). `DecidedBy` diambil dari isian bebas yang diingat di `localStorage` (`investigation.js:330-334`), jadi tidak bisa dipercaya sebagai identitas. Belum ada halaman atau ekspor audit, dan keputusan belum masuk aliran event (lihat 🔶 `approval_decided`). |
-| Demo 12-1: dua panel saling terhubung | **Sebagian** | `EventBroadcaster.cs` menyiarkan event ke semua koneksi kasus yang sama | Dua tab browser untuk kasus yang sama sudah saling sinkron. Belum ada halaman dua panel (sisi agent menunggu, sisi analis memutuskan) dan belum ada diagram state machine di kode. |
+| Kasus tepi: approval tak kunjung datang, analis lain melanjutkan | **Sebagian** | Pengecekan `approvalId` usang (`DecisionResult.StaleApproval`). Dua keputusan bersamaan: `InvestigationService.DecideAsync` merebut kasus dengan update bersyarat (`AwaitingApproval` → `Running`) dalam satu transaksi; hanya satu yang menang, yang lain mendapat `DecisionResult.AlreadyDecided` dan HTTP 409 "Kasus ini sudah diputuskan oleh …", tanpa menyentuh agent. Test: `DecisionConcurrencyTests.cs` | Belum ada batas waktu, pengingat, atau kedaluwarsa approval (ASD sengaja tanpa batas waktu). Kedaluwarsa yang diputuskan agent butuh 🔶. |
+| Jejak audit: "siapa menyetujui ini?" | **Sebagian** | Tabel `ApprovalDecisionRecord` (`Entities.cs:56-65`: keputusan, komentar, `DecidedBy`, `DecidedAt`, `ApprovalId`), daftar "Keputusan analis" di `Details.cshtml:76`, event tersimpan di `AgentEventRecord` | `DecidedBy` diambil dari pengguna yang login (`InvestigationController.Approval`), bukan dari isian formulir. Autentikasi masih untuk demo: tiga akun dari konfigurasi `DemoUsers`, masuk tanpa kata sandi (`Auth/DemoUsers.cs`). Belum ada halaman atau ekspor audit, dan keputusan belum masuk aliran event (lihat 🔶 `approval_decided`). |
+| Demo 12-1: dua panel saling terhubung | **Sebagian** | `EventBroadcaster.cs` menyiarkan event ke semua koneksi kasus yang sama | Dua tab browser untuk kasus yang sama sudah saling sinkron. State machine kasus sudah ada di satu file (`CaseStateMachine.cs`, dengan test per pasangan status). Belum ada halaman dua panel (sisi agent menunggu, sisi analis memutuskan) dan diagram Mermaid-nya (Tahap 11). |
 
 ## Bab 13: State, Sesi, Durabilitas, dan Interaksi Asinkron
 
@@ -144,5 +151,6 @@ paling dibutuhkan buku.
 | Label tool yang ramah | 11 | Field opsional `displayName` di `tool_call_started` | Ya, dengan peta nama tool ke label di JavaScript. Disarankan tanpa perubahan kontrak. |
 
 Hal yang **tidak** butuh perubahan kontrak: ping keep-alive di SSE aplikasi,
-polling, SignalR, partial view per pola, halaman antrean approval, perbaikan
-konkurensi keputusan, autentikasi, repository, retensi, dan halaman demo.
+polling, SignalR, partial view per pola, halaman antrean approval, repository,
+retensi, dan halaman demo. Perbaikan konkurensi keputusan dan autentikasi
+sudah dikerjakan di Tahap 7 tanpa perubahan kontrak.

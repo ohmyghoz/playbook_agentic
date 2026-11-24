@@ -31,7 +31,7 @@ public partial class InvestigationFlowTests(SurveillanceFactory factory) : IClas
 
         var approvalId = events[^1].PayloadAs<ApprovalRequiredPayload>().ApprovalId;
         var result = await factory.Investigations.DecideAsync(caseId, approvalId, Decision.Approve, null, "analis-uji", default);
-        Assert.Equal(DecisionResult.Accepted, result);
+        Assert.Equal(DecisionResult.Accepted, result.Result);
 
         var finished = await factory.WaitForStatusAsync(caseId, s => s.IsTerminal());
         Assert.Equal(CaseStatus.Approved, finished.Status);
@@ -51,9 +51,9 @@ public partial class InvestigationFlowTests(SurveillanceFactory factory) : IClas
         var approvalId = (await StoredEvents(caseId))[^1].PayloadAs<ApprovalRequiredPayload>().ApprovalId;
 
         Assert.Equal(DecisionResult.CommentRequired,
-            await factory.Investigations.DecideAsync(caseId, approvalId, Decision.Reject, " ", "analis-uji", default));
+            (await factory.Investigations.DecideAsync(caseId, approvalId, Decision.Reject, " ", "analis-uji", default)).Result);
         Assert.Equal(DecisionResult.StaleApproval,
-            await factory.Investigations.DecideAsync(caseId, "approval_x", Decision.Approve, null, "analis-uji", default));
+            (await factory.Investigations.DecideAsync(caseId, "approval_x", Decision.Approve, null, "analis-uji", default)).Result);
 
         await factory.Investigations.DecideAsync(caseId, approvalId, Decision.Reject, "Bukti belum cukup.", "analis-uji", default);
         var finished = await factory.WaitForStatusAsync(caseId, s => s.IsTerminal());
@@ -73,6 +73,25 @@ public partial class InvestigationFlowTests(SurveillanceFactory factory) : IClas
         await factory.Pump.PersistAsync(caseId, events[2]);
 
         Assert.Equal(events.Count, (await StoredEvents(caseId)).Count);
+    }
+
+    [Fact]
+    public async Task Event_after_the_run_ended_does_not_reopen_the_case()
+    {
+        var caseId = await factory.Investigations.StartAsync(Input(), default);
+        await factory.WaitForStatusAsync(caseId, s => s == CaseStatus.AwaitingApproval);
+        var events = await StoredEvents(caseId);
+        await factory.Investigations.DecideAsync(caseId, events[^1].PayloadAs<ApprovalRequiredPayload>().ApprovalId,
+            Decision.Approve, null, "analis-uji", default);
+        var finished = await factory.WaitForStatusAsync(caseId, s => s.IsTerminal());
+
+        // A misbehaving agent keeps talking after done: the event is kept, the status is not changed.
+        var late = AgentEvent.Create(finished.RunId!, finished.LastSequence + 1, AgentEventType.Token, new TokenPayload("terlambat"));
+        await factory.Pump.PersistAsync(caseId, late);
+
+        var after = (await factory.Investigations.GetCaseAsync(caseId, default))!;
+        Assert.Equal(CaseStatus.Approved, after.Status);
+        Assert.Equal(late.Sequence, after.LastSequence);
     }
 
     [Fact]
@@ -149,7 +168,7 @@ public partial class InvestigationFlowTests(SurveillanceFactory factory) : IClas
             ["ApprovalId"] = approvalId,
             ["Decision"] = "revise",
             ["Comment"] = "Tambahkan pola asing 20 sesi.",
-            ["DecidedBy"] = "analis-uji",
+            ["DecidedBy"] = "nama palsu dari formulir",
         };
 
         var withoutToken = await client.PostAsync($"/investigations/{caseId}/approval", new FormUrlEncodedContent(form));
@@ -159,8 +178,11 @@ public partial class InvestigationFlowTests(SurveillanceFactory factory) : IClas
         var accepted = await client.PostAsync($"/investigations/{caseId}/approval", new FormUrlEncodedContent(form));
         Assert.Equal(HttpStatusCode.OK, accepted.StatusCode);
 
-        await factory.WaitForStatusAsync(caseId, s => s == CaseStatus.AwaitingApproval
+        var revised = await factory.WaitForStatusAsync(caseId, s => s == CaseStatus.AwaitingApproval
             && StoredEvents(caseId).Result[^1].PayloadAs<ApprovalRequiredPayload>().Revision == 1);
+
+        // Recorded under the signed-in account (TestAuthHandler default analis1), not the form field.
+        Assert.Equal("Ni Kadek Ayu Lestari", Assert.Single(revised.Decisions).DecidedBy);
     }
 
     [Fact]

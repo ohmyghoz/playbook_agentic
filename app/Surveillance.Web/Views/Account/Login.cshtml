@@ -1,0 +1,26 @@
+@using Surveillance.Web.Auth
+@model IReadOnlyList<DemoUser>
+@{
+    ViewData["Title"] = "Masuk";
+}
+
+<div style="max-width: 32rem">
+    <h1 class="h3">Masuk</h1>
+    <p>Pilih akun untuk masuk. Nama akun dicatat pada setiap keputusan approval.</p>
+
+    <form asp-action="Login" method="post" class="d-grid gap-2">
+        <input type="hidden" name="returnUrl" value="@ViewData["ReturnUrl"]" />
+        @foreach (var user in Model)
+        {
+            <button type="submit" name="userName" value="@user.UserName" class="btn btn-outline-primary text-start">
+                <span class="fw-semibold">@user.DisplayName</span>
+                <span class="d-block small text-muted">@user.Role</span>
+            </button>
+        }
+    </form>
+
+    <p class="alert alert-secondary small mt-4">
+        Autentikasi untuk demo: akun diambil dari konfigurasi dan masuk tanpa kata sandi.
+        Aplikasi sungguhan memakai penyedia identitas organisasi.
+    </p>
+</div>

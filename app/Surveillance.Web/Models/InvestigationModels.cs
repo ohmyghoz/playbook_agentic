@@ -99,10 +99,6 @@ public class ApprovalForm
 
     [StringLength(2000)]
     public string? Comment { get; set; }
-
-    [Required]
-    [StringLength(128)]
-    public string DecidedBy { get; set; } = "";
 }
 
 public static class CaseStatusText

@@ -183,8 +183,6 @@
         pendingApproval = { card, approvalId: p.approvalId, toolCallId: submitCall ? submitCall.id.slice(5) : null };
 
         if (interactive) {
-            const name = form.querySelector("[name='DecidedBy']");
-            name.value = readAnalystName();
             form.addEventListener("submit", e => submitDecision(e, form, p.approvalId));
         } else {
             form.remove();
@@ -293,7 +291,6 @@
             return;
         }
 
-        saveAnalystName(String(data.get("DecidedBy") || ""));
         form.querySelectorAll("button").forEach(b => (b.disabled = true));
         message.className = "approval-message small mt-2 text-muted";
         message.textContent = "Mengirim keputusan...";
@@ -324,14 +321,6 @@
                 el.stop.textContent = "Hentikan investigasi";
             }
         });
-    }
-
-    function readAnalystName() {
-        try { return localStorage.getItem("analystName") || ""; } catch { return ""; }
-    }
-
-    function saveAnalystName(name) {
-        try { localStorage.setItem("analystName", name); } catch { /* storage unavailable */ }
     }
 
     // ---- data sources ------------------------------------------------------

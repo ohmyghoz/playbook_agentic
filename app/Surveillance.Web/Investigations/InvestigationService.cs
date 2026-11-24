@@ -25,7 +25,11 @@ public enum DecisionResult
     NotAwaitingApproval,
     StaleApproval,
     CommentRequired,
+    AlreadyDecided,
 }
+
+/// <param name="DecidedBy">Who made the decision that won, when the result is <see cref="DecisionResult.AlreadyDecided"/>.</param>
+public sealed record DecisionOutcome(DecisionResult Result, string? DecidedBy = null);
 
 /// <summary>
 /// Everything controllers need for UMA investigations. Knows only
@@ -86,24 +90,32 @@ public sealed class InvestigationService(
         return @case.Id;
     }
 
-    public async Task<DecisionResult> DecideAsync(Guid caseId, string approvalId, Decision decision,
+    /// <summary>
+    /// Records an analyst's decision and resumes the agent. When two analysts decide the same
+    /// approval at once, exactly one wins: the case is claimed with a conditional update
+    /// (AwaitingApproval → Running) and only the request that changed the row goes on.
+    /// The other gets <see cref="DecisionResult.AlreadyDecided"/> and never reaches the agent.
+    /// </summary>
+    public async Task<DecisionOutcome> DecideAsync(Guid caseId, string approvalId, Decision decision,
         string? comment, string decidedBy, CancellationToken ct)
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct);
-        var @case = await db.Cases.SingleOrDefaultAsync(c => c.Id == caseId, ct);
+        var @case = await db.Cases.AsNoTracking().SingleOrDefaultAsync(c => c.Id == caseId, ct);
         if (@case is null)
         {
-            return DecisionResult.CaseNotFound;
+            return new(DecisionResult.CaseNotFound);
         }
 
         if (@case.Status != CaseStatus.AwaitingApproval || @case.RunId is null)
         {
-            return DecisionResult.NotAwaitingApproval;
+            return await WinnerOfAsync(db, caseId, approvalId, ct) is { } winner
+                ? new(DecisionResult.AlreadyDecided, winner)
+                : new(DecisionResult.NotAwaitingApproval);
         }
 
         if (decision != Decision.Approve && string.IsNullOrWhiteSpace(comment))
         {
-            return DecisionResult.CommentRequired;
+            return new(DecisionResult.CommentRequired);
         }
 
         var latest = await db.Events
@@ -114,22 +126,46 @@ public sealed class InvestigationService(
         var pending = JsonSerializer.Deserialize<ApprovalRequiredPayload>(latest, AgentJson.Options)!;
         if (pending.ApprovalId != approvalId)
         {
-            return DecisionResult.StaleApproval;
+            return new(DecisionResult.StaleApproval);
         }
 
         var normalizedComment = string.IsNullOrWhiteSpace(comment) ? null : comment.Trim();
-        db.Decisions.Add(new ApprovalDecisionRecord
+        var running = CaseStateMachine.Move(CaseStatus.AwaitingApproval, CaseStatus.Running);
+
+        // A user transaction must run inside the execution strategy when retry on failure is on.
+        var claimed = await db.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
         {
-            CaseId = caseId,
-            ApprovalId = approvalId,
-            Decision = EventMapping.EnumName(decision),
-            Comment = normalizedComment,
-            DecidedBy = decidedBy.Trim(),
-            DecidedAt = DateTime.UtcNow,
+            db.ChangeTracker.Clear();
+            await using var tx = await db.Database.BeginTransactionAsync(ct);
+            var changed = await db.Cases
+                .Where(c => c.Id == caseId && c.Status == CaseStatus.AwaitingApproval)
+                .ExecuteUpdateAsync(s => s
+                    .SetProperty(c => c.Status, running)
+                    .SetProperty(c => c.UpdatedAt, DateTime.UtcNow), ct);
+            if (changed == 0)
+            {
+                return false; // someone else claimed it between our read and this update
+            }
+
+            db.Decisions.Add(new ApprovalDecisionRecord
+            {
+                CaseId = caseId,
+                ApprovalId = approvalId,
+                Decision = EventMapping.EnumName(decision),
+                Comment = normalizedComment,
+                DecidedBy = decidedBy.Trim(),
+                DecidedAt = DateTime.UtcNow,
+            });
+            await db.SaveChangesAsync(ct);
+            await tx.CommitAsync(ct);
+            return true;
         });
-        @case.Status = CaseStatus.Running;
-        @case.UpdatedAt = DateTime.UtcNow;
-        await db.SaveChangesAsync(ct);
+
+        if (!claimed)
+        {
+            logger.LogInformation("Decision on case {CaseId} by {DecidedBy} lost the race", caseId, decidedBy);
+            return new(DecisionResult.AlreadyDecided, await WinnerOfAsync(db, caseId, approvalId, ct));
+        }
 
         try
         {
@@ -142,12 +178,18 @@ public sealed class InvestigationService(
             logger.LogError(ex, "Agent failed to resume case {CaseId}", caseId);
             await pump.RecordFailureAsync(caseId, @case.RunId, AgentErrorCode.Internal,
                 "Agent tidak bisa melanjutkan investigasi ini. Keputusan Anda sudah tersimpan. Mulai investigasi baru untuk mencoba lagi.");
-            return DecisionResult.Accepted;
+            return new(DecisionResult.Accepted);
         }
 
         _ = pump.Start(caseId, @case.RunId, @case.Provider);
-        return DecisionResult.Accepted;
+        return new(DecisionResult.Accepted);
     }
+
+    private static Task<string?> WinnerOfAsync(SurveillanceDbContext db, Guid caseId, string approvalId, CancellationToken ct) =>
+        db.Decisions.AsNoTracking()
+            .Where(d => d.CaseId == caseId && d.ApprovalId == approvalId)
+            .Select(d => d.DecidedBy)
+            .FirstOrDefaultAsync(ct);
 
     public async Task StopAsync(Guid caseId, CancellationToken ct)
     {
@@ -244,7 +286,7 @@ public sealed class InvestigationService(
         await using var db = await dbFactory.CreateDbContextAsync();
         var @case = await db.Cases.SingleAsync(c => c.Id == caseId);
         @case.RunId = runId;
-        @case.Status = CaseStatus.Running;
+        @case.Status = CaseStateMachine.Move(@case.Status, CaseStatus.Running);
         @case.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync();
     }

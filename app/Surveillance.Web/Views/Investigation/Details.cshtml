@@ -102,10 +102,7 @@
             <div class="memo"></div>
             <form class="approval-form mt-3 border-top pt-3">
                 <div class="row g-2">
-                    <div class="col-sm-6">
-                        <label class="form-label small">Nama analis</label>
-                        <input name="DecidedBy" class="form-control form-control-sm" required maxlength="128" autocomplete="name" />
-                    </div>
+                    <div class="col-12 small text-muted">Keputusan dicatat atas nama @User.Identity?.Name.</div>
                     <div class="col-12">
                         <label class="form-label small">Komentar (wajib untuk revisi dan tolak)</label>
                         <textarea name="Comment" class="form-control form-control-sm" rows="2" maxlength="2000"></textarea>

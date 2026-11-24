@@ -17,10 +17,20 @@
                     <li class="nav-item">
                         <a class="nav-link text-dark" asp-controller="Investigation" asp-action="Index">Investigasi UMA</a>
                     </li>
-                    <li class="nav-item">
-                        <a class="nav-link text-dark" asp-controller="Settings" asp-action="Index">Setting</a>
-                    </li>
+                    @if (User.IsInRole(Surveillance.Web.Auth.Roles.Supervisor))
+                    {
+                        <li class="nav-item">
+                            <a class="nav-link text-dark" asp-controller="Settings" asp-action="Index">Setting</a>
+                        </li>
+                    }
                 </ul>
+                @if (User.Identity?.IsAuthenticated == true)
+                {
+                    <form class="ms-auto d-flex align-items-center gap-2" asp-controller="Account" asp-action="Logout" method="post">
+                        <span class="small text-muted">@User.Identity.Name</span>
+                        <button type="submit" class="btn btn-link btn-sm p-0">Keluar</button>
+                    </form>
+                }
             </div>
         </nav>
     </header>
