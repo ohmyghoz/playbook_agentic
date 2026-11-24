@@ -25,7 +25,15 @@ public sealed class FakeAgentClient(IOptions<FakeAgentOptions> options) : IAgent
     public Task<string> StartAsync(InvestigationRequest request, CancellationToken ct)
     {
         var runId = $"fake-{Guid.NewGuid():N}";
-        _runs[runId] = new FakeRun(runId, request, _options.Scenario);
+        // The contract tests choose a scenario per run through the analyst notes ('scenario=<name>').
+        var scenario = request.Notes switch
+        {
+            { } n when n.Contains("scenario=step_limit", StringComparison.Ordinal) => FakeScenario.StepLimit,
+            { } n when n.Contains("scenario=model_error", StringComparison.Ordinal) => FakeScenario.ModelError,
+            _ => _options.Scenario,
+        };
+        var slow = request.Notes?.Contains("scenario=slow", StringComparison.Ordinal) == true;
+        _runs[runId] = new FakeRun(runId, request, scenario) { ToolDelayMs = slow ? 3_000 : _options.ToolDelayMs };
         return Task.FromResult(runId);
     }
 
@@ -108,7 +116,7 @@ public sealed class FakeAgentClient(IOptions<FakeAgentOptions> options) : IAgent
                         yield return Emit(run, AgentEventType.ToolCallStarted,
                             new ToolCallStartedPayload(callId, tool.Name, JsonSerializer.SerializeToElement(tool.Arguments)));
 
-                        if (await DelayAsync(_options.ToolDelayMs, ct))
+                        if (await DelayAsync(run.ToolDelayMs, ct))
                         {
                             run.InFlightTool = (callId, tool.Name);
                             foreach (var e in Cancel(run)) yield return e;
@@ -386,6 +394,7 @@ public sealed class FakeAgentClient(IOptions<FakeAgentOptions> options) : IAgent
         public string RunId { get; } = runId;
         public InvestigationRequest Request { get; } = request;
         public FakeScenario Scenario { get; } = scenario;
+        public int ToolDelayMs { get; init; }
         public SemaphoreSlim Gate { get; } = new(1, 1);
         public Queue<Step> Pending { get; } = new();
         public Dictionary<string, string> ToolCallIds { get; } = new();

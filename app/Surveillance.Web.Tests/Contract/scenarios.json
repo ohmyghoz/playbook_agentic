@@ -1,0 +1,45 @@
+{
+  "description": "Scripted model turns for the agent contract tests. One file for MAF, LangGraph and ADK. The scripted model picks a scenario from 'scenario=<name>' in the analyst notes and the turn from the number of model replies already in the conversation.",
+  "tools": {
+    "idx_stockbit_status": { "text": "{\"logged_in\":true,\"renewable\":true}" },
+    "idx_quote": { "text": "{\"schema\":\"idx.quotes.v1\",\"provider\":\"yahoo\",\"data\":[{\"symbol\":\"BBCA\",\"price\":5800.0,\"change_pct\":2.2026,\"volume\":235635300,\"avg_volume_3m\":212048028}]}" },
+    "idx_history": { "text": "{\"schema\":\"idx.history.v1\",\"data\":{\"summary\":{\"candles\":66,\"avg_volume\":210424313,\"low\":4740.0,\"high\":6850.0}}}" },
+    "idx_bandar": { "text": "{\"error\":{\"code\":\"provider\",\"message\":\"ipot: broker summary for BBCA: HTTP 502\"},\"exit_code\":3}", "isError": true }
+  },
+  "memos": {
+    "first": {
+      "symbol": "BBCA", "anomalyDate": "2026-11-24",
+      "summary": "Volume di atas rata-rata tanpa berita material.",
+      "anomaly": { "description": "Volume 1,1x rata-rata 3 bulan.", "volume": 235635300 },
+      "findings": [ { "category": "price_volume", "statement": "Volume di atas rata-rata.",
+                      "evidence": [ { "toolCallId": "c2", "toolName": "idx_quote", "detail": "volume" } ] } ],
+      "unavailableData": [ { "toolName": "idx_bandar", "reason": "IPOT HTTP 502" } ],
+      "evidenceLevel": "weak", "evidenceRationale": "Penyimpangan kecil.",
+      "recommendation": "monitor", "recommendationRationale": "Pantau sesi berikutnya.",
+      "disclaimer": "Indikasi untuk ditelaah analis, bukan kesimpulan pelanggaran."
+    }
+  },
+  "scenarios": {
+    "approve": {
+      "turns": [
+        [ { "text": "Memeriksa sesi Stockbit. " }, { "call": { "id": "c1", "name": "idx_stockbit_status", "args": {} } } ],
+        [ { "text": "Mengukur harga dan volume. " }, { "call": { "id": "c2", "name": "idx_quote", "args": { "symbols": "BBCA" } } },
+          { "call": { "id": "c3", "name": "idx_history", "args": { "symbol": "BBCA", "period": "3mo" } } } ],
+        [ { "text": "Data bandar diperiksa. " }, { "call": { "id": "c4", "name": "idx_bandar", "args": { "symbols": "BBCA" } } } ],
+        [ { "text": "Menyusun memo. " }, { "call": { "id": "m1", "name": "submit_memo", "args": { "memo": "$first" } } } ],
+        [ { "call": { "id": "m2", "name": "submit_memo", "args": { "memo": "$first" } } } ],
+        [ { "call": { "id": "m3", "name": "submit_memo", "args": { "memo": "$first" } } } ]
+      ]
+    },
+    "slow": {
+      "delaySeconds": 3,
+      "turns": [
+        [ { "text": "Memeriksa sesi Stockbit. " }, { "call": { "id": "c1", "name": "idx_stockbit_status", "args": {} } } ]
+      ]
+    },
+    "step_limit": {
+      "turns": [],
+      "fallback": [ { "text": "Memeriksa lagi. " }, { "call": { "id": "q{n}", "name": "idx_quote", "args": { "symbols": "BBCA" } } } ]
+    }
+  }
+}

@@ -38,19 +38,30 @@ class AdkEngine:
             from .agent import build_agent
 
         self._settings = settings
-        self.toolset = McpToolset(
-            connection_params=StreamableHTTPConnectionParams(
-                url=settings.mcp_endpoint, headers={"Authorization": f"Bearer {settings.mcp_token or ''}"}, timeout=30),
-            tool_filter=sorted(ALLOWED_MCP_TOOLS))
         db_path = (settings.data_dir / "sessions.db").as_posix()
         self.sessions = DatabaseSessionService(db_url=f"sqlite+aiosqlite:///{db_path}")
-        # The ASD allows two retries of transient model errors (429, 5xx), like MAF and LangGraph do.
-        model = Gemini(model=settings.model_name, retry_options=types.HttpRetryOptions(
-            attempts=3, initial_delay=2.0, max_delay=20.0, http_status_codes=[429, 500, 502, 503, 504]))
-        self.runner = Runner(app_name=settings.app_name, agent=build_agent(model, self.toolset, settings),
+
+        if settings.script_path:
+            # Contract tests: scripted model and canned tools, no API key or MCP server.
+            from .scripted import Script, ScriptedLlm, canned_tools
+            script = Script(settings.script_path)
+            self.toolset = None
+            model, tools = ScriptedLlm(script=script), canned_tools(script)
+        else:
+            self.toolset = McpToolset(
+                connection_params=StreamableHTTPConnectionParams(
+                    url=settings.mcp_endpoint, headers={"Authorization": f"Bearer {settings.mcp_token or ''}"}, timeout=30),
+                tool_filter=sorted(ALLOWED_MCP_TOOLS))
+            # The ASD allows two retries of transient model errors (429, 5xx), like MAF and LangGraph do.
+            model = Gemini(model=settings.model_name, retry_options=types.HttpRetryOptions(
+                attempts=3, initial_delay=2.0, max_delay=20.0, http_status_codes=[429, 500, 502, 503, 504]))
+            tools = self.toolset
+        self.runner = Runner(app_name=settings.app_name, agent=build_agent(model, tools, settings),
                              session_service=self.sessions)
 
     async def check_tools(self) -> None:
+        if self.toolset is None:
+            return  # canned tools in AGENT_SCRIPT mode
         # ADK keeps running without tools when the server is down; an investigation without data is useless.
         if not self._settings.mcp_token:
             raise McpUnavailable("IDX_MCP_TOKEN is not set.")
@@ -79,7 +90,7 @@ async def _body(request: Request, model: type) -> Any:
 @contextlib.asynccontextmanager
 async def _production_manager() -> AsyncIterator[RunManager]:
     settings = Settings()
-    if not settings.api_key:
+    if not settings.api_key and not settings.script_path:
         raise RuntimeError("GOOGLE_API_KEY is not set. Put it in agents/adk/.env.")
     settings.data_dir.mkdir(parents=True, exist_ok=True)
 

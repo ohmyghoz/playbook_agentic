@@ -61,6 +61,19 @@ class ToolProvider:
             await self._stack.aclose()
 
 
+class CannedToolProvider:
+    """Fixed tools for AGENT_SCRIPT mode."""
+
+    def __init__(self, tools: list[Any]):
+        self._tools = tools
+
+    async def get(self) -> list[Any]:
+        return self._tools
+
+    async def close(self) -> None:
+        pass
+
+
 def _error(status: int, code: str, message: str) -> JSONResponse:
     return JSONResponse({"error": {"code": code, "message": message}}, status_code=status)
 
@@ -80,13 +93,20 @@ async def _production_manager() -> AsyncIterator[RunManager]:
     from .graph import build_graph
 
     settings = Settings()
-    if not settings.api_key:
-        raise RuntimeError("OPENROUTER_API_KEY is not set. Put it in agents/langgraph/.env.")
     settings.data_dir.mkdir(parents=True, exist_ok=True)
 
-    model = ChatOpenAI(model=settings.model_name, base_url=settings.model_base_url, api_key=settings.api_key,
-                       max_retries=2, timeout=120)
-    tools = ToolProvider(settings)
+    if settings.script_path:
+        # Contract tests: scripted model and canned tools, no API key or MCP server.
+        from .scripted import ScriptedChatModel, Script, canned_tools
+        script = Script(settings.script_path)
+        model = ScriptedChatModel(script=script)
+        tools = CannedToolProvider(canned_tools(script))
+    else:
+        if not settings.api_key:
+            raise RuntimeError("OPENROUTER_API_KEY is not set. Put it in agents/langgraph/.env.")
+        model = ChatOpenAI(model=settings.model_name, base_url=settings.model_base_url, api_key=settings.api_key,
+                           max_retries=2, timeout=120)
+        tools = ToolProvider(settings)
     async with AsyncSqliteSaver.from_conn_string(str(settings.data_dir / "checkpoints.db")) as saver:
         store = await RunStore.open(settings.data_dir / "service.db")
         compiled: dict[str, Any] = {}

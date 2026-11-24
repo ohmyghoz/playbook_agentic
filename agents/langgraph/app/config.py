@@ -20,7 +20,9 @@ class Settings:
     mcp_endpoint: str = field(default_factory=lambda: os.environ.get("MCP_ENDPOINT", "http://127.0.0.1:8765/mcp"))
     mcp_token: str | None = field(default_factory=lambda: os.environ.get("IDX_MCP_TOKEN"))
     data_dir: Path = field(default_factory=lambda: Path(os.environ.get("LANGGRAPH_DATA_DIR", SERVICE_DIR / "data")))
-    max_tool_calls: int = 15
+    # Set only by the contract tests: a scenarios file replaces the model and the MCP tools.
+    script_path: str | None = field(default_factory=lambda: os.environ.get("AGENT_SCRIPT"))
+    max_tool_calls: int = field(default_factory=lambda: int(os.environ.get("MAX_TOOL_CALLS", "15")))
     max_revisions: int = 2
     max_invalid_memos: int = 3
     max_text_only_turns: int = 3
