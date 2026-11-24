@@ -1,4 +1,7 @@
-"""Short Indonesian summaries of idx tool results for tool_call_finished. Mirrors agents/maf/ToolResultSummarizer.cs."""
+"""Short Indonesian summaries of idx tool results for tool_call_finished.
+
+Mirrors agents/maf/ToolResultSummarizer.cs; agents/langgraph and agents/adk keep identical copies.
+"""
 
 import json
 from typing import Any
@@ -47,6 +50,8 @@ def summarize(call_id: str, tool_name: str, text: str, is_error: bool = False) -
 
     if "error" in envelope:
         err = envelope["error"] or {}
+        if isinstance(err, str):  # ADK: {"error": "MCP tool execution failed: ..."}
+            return tool_finished(call_id, tool_name, False, f"Data {tool_name} tidak tersedia (tool_error).", "tool_error", err)
         code = str(err.get("code") or "error")
         return tool_finished(call_id, tool_name, False, _failure_text(tool_name, code), code, str(err.get("message", "")))
 

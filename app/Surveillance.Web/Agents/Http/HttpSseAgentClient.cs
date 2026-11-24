@@ -14,10 +14,11 @@ public sealed class HttpAgentOptions
 }
 
 /// <summary>
-/// Solution 2: the LangGraph service, reached over the HTTP + SSE contract in
-/// contracts/agent-service-api.md. The service already emits catalog events.
+/// An agent service reached over the HTTP + SSE contract in
+/// contracts/agent-service-api.md. The service already emits catalog events,
+/// so this client only transports them; LangGraph and ADK differ only in the URL.
 /// </summary>
-public sealed class LangGraphAgentClient(HttpClient http, ILogger<LangGraphAgentClient> logger) : IAgentClient
+public abstract class HttpSseAgentClient(HttpClient http, ILogger logger) : IAgentClient
 {
     private const int MaxReconnects = 3;
 
@@ -149,3 +150,11 @@ public sealed class LangGraphAgentClient(HttpClient http, ILogger<LangGraphAgent
         }
     }
 }
+
+/// <summary>Solution 2: the LangGraph service (agents/langgraph, port 8101).</summary>
+public sealed class LangGraphAgentClient(HttpClient http, ILogger<LangGraphAgentClient> logger)
+    : HttpSseAgentClient(http, logger);
+
+/// <summary>Solution 3: the Google ADK service (agents/adk, port 8102).</summary>
+public sealed class AdkAgentClient(HttpClient http, ILogger<AdkAgentClient> logger)
+    : HttpSseAgentClient(http, logger);

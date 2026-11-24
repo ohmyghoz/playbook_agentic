@@ -173,7 +173,7 @@ Selesai jika: contract test lulus atau setiap kegagalan dijelaskan di `COMPATIBI
 - [x] Tahap 2: aplikasi MVC dengan agent tiruan
 - [x] Tahap 3: solusi MAF
 - [x] Tahap 4: solusi LangGraph
-- [ ] Tahap 5: solusi Google ADK
+- [x] Tahap 5: solusi Google ADK
 - [ ] Tahap 6: contract test dan use case 2
 
 ## Catatan keputusan
@@ -210,4 +210,10 @@ Tambahkan satu baris per keputusan: tanggal, keputusan, alasan singkat.
 - 2026-11-25: Giliran model yang hanya berisi teks dianggap narasi; agent diberi pesan "Lanjutkan…" dan gagal setelah 3 giliran teks berturut-turut. Ditemukan saat uji live (Qwen memisahkan narasi dan tool call); berlaku di MAF dan LangGraph.
 - 2026-11-25: Folder data LangGraph memakai `LANGGRAPH_DATA_DIR`, bukan `DATA_DIR`, karena `DATA_DIR` di mesin ini milik open-webui. `.env` service dibaca dengan `override=True` supaya tidak kalah oleh variable sistem bernama sama.
 - 2026-11-25: Test di C# dan Python membandingkan teks instruksi di kode dengan blok teks di ASD, supaya ketiga solusi tidak diam-diam berbeda.
+- 2026-11-25: Model Solusi 3 (ADK): `gemini-3.8-flash` lewat AI Studio. `gemini-2.5-flash` ditolak untuk akun baru (404 "no longer available to new users").
+- 2026-11-25: API key Gemini memakai tier berbayar (billing diaktifkan). Tier gratis sering 503 saat permintaan tinggi, dan prompt di tier gratis boleh dipakai Google untuk mengembangkan produk; untuk data pengawasan, tier gratis tidak dipakai.
+- 2026-11-25: ADK memakai Tool Confirmation (`request_confirmation`) dengan keputusan analis di `payload`, dan `DatabaseSessionService` (sqlite+aiosqlite). Situs ADK menyebut kombinasi ini tidak didukung; panduan repo menyebut didukung; test memastikan jeda approval bertahan setelah restart.
+- 2026-11-25: ADK `submit_memo` mendeklarasikan skema `Memo` tapi menerima dict mentah, supaya memo tidak sah tercatat sebagai `invalid_memo` dan tidak gagal di konversi ADK. Model Gemini diberi `retry_options` (2 kali coba ulang untuk 429/5xx), sama seperti MAF dan LangGraph.
+- 2026-11-25: `contract.py`, `instructions.py`, dan `summarizer.py` disalin dari LangGraph ke ADK (bukan paket bersama) supaya tiap service berdiri sendiri; test di kedua service menjaga instruksi tetap sama dengan ASD.
+- 2026-11-25: Kode klien HTTP dipindah ke base class `HttpSseAgentClient`; `LangGraphAgentClient` dan `AdkAgentClient` hanya turunan tipis. `scripts/start-all.ps1` menyalakan MCP, LangGraph, dan ADK di jendela terpisah, dengan opsi `-Provider` untuk aplikasi web.
 - 2026-11-24: Catatan keamanan: server Azure SQL punya aturan firewall `AllowAll-Experiment` (0.0.0.0–255.255.255.255). Belum diubah; sebaiknya dihapus dan diganti aturan per IP.

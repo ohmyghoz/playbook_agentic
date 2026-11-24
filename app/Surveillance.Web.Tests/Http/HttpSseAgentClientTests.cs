@@ -7,8 +7,9 @@ using Surveillance.Web.Agents.Http;
 
 namespace Surveillance.Web.Tests.Http;
 
-/// <summary>The client side of contracts/agent-service-api.md against a scripted service.</summary>
-public class LangGraphAgentClientTests
+/// <summary>The client side of contracts/agent-service-api.md against a scripted service.
+/// LangGraphAgentClient and AdkAgentClient share this code; the tests run against both.</summary>
+public class HttpSseAgentClientTests
 {
     private static readonly InvestigationRequest Request = new(
         "case-1", "BBCA", new DateOnly(2026, 11, 24), new AnomalyTrigger(TriggerKind.Volume, "Volume di atas 1,1x"));
@@ -29,8 +30,15 @@ public class LangGraphAgentClientTests
         }
     }
 
-    private static LangGraphAgentClient Client(ScriptedService service) =>
-        new(new HttpClient(service) { BaseAddress = new Uri("http://127.0.0.1:8101/") }, NullLogger<LangGraphAgentClient>.Instance);
+    public static TheoryData<string> Providers => new() { "langgraph", "adk" };
+
+    private static HttpSseAgentClient Client(string provider, ScriptedService service)
+    {
+        var http = new HttpClient(service) { BaseAddress = new Uri("http://127.0.0.1:8101/") };
+        return provider == "adk"
+            ? new AdkAgentClient(http, NullLogger<AdkAgentClient>.Instance)
+            : new LangGraphAgentClient(http, NullLogger<LangGraphAgentClient>.Instance);
+    }
 
     private static string Frame(long sequence, AgentEventType type, object payload)
     {
@@ -60,15 +68,16 @@ public class LangGraphAgentClientTests
         return events;
     }
 
-    [Fact]
-    public async Task Start_posts_the_request_in_wire_format()
+    [Theory]
+    [MemberData(nameof(Providers))]
+    public async Task Start_posts_the_request_in_wire_format(string provider)
     {
         var service = new ScriptedService((_, _) => new HttpResponseMessage(HttpStatusCode.Created)
         {
             Content = new StringContent("""{"runId":"lg-1"}""", Encoding.UTF8, "application/json"),
         });
 
-        var runId = await Client(service).StartAsync(Request, default);
+        var runId = await Client(provider, service).StartAsync(Request, default);
 
         Assert.Equal("lg-1", runId);
         var (method, path, body) = Assert.Single(service.Calls);
@@ -78,13 +87,14 @@ public class LangGraphAgentClientTests
         Assert.Equal("volume", json.RootElement.GetProperty("trigger").GetProperty("kind").GetString());
     }
 
-    [Fact]
-    public async Task Stream_reads_until_pause_and_continues_after_the_last_sequence()
+    [Theory]
+    [MemberData(nameof(Providers))]
+    public async Task Stream_reads_until_pause_and_continues_after_the_last_sequence(string provider)
     {
         var service = new ScriptedService((req, _) => req.RequestUri!.Query.Contains("after=0")
             ? Sse(Started, Token, Approval)
             : Sse(Done));
-        var client = Client(service);
+        var client = Client(provider, service);
 
         var first = await Drain(client, "lg-1");
         var second = await Drain(client, "lg-1");
@@ -95,33 +105,36 @@ public class LangGraphAgentClientTests
         Assert.Contains(service.Calls, c => c.Path == "/runs/lg-1/events?after=3");
     }
 
-    [Fact]
-    public async Task Dropped_stream_reconnects_from_the_last_sequence_and_skips_duplicates()
+    [Theory]
+    [MemberData(nameof(Providers))]
+    public async Task Dropped_stream_reconnects_from_the_last_sequence_and_skips_duplicates(string provider)
     {
         var attempt = 0;
         var service = new ScriptedService((_, _) => ++attempt == 1 ? Sse(Started, Token) : Sse(Token, Approval));
 
-        var events = await Drain(Client(service), "lg-1");
+        var events = await Drain(Client(provider, service), "lg-1");
 
         Assert.Equal([1L, 2, 3], events.Select(e => e.Sequence));
         Assert.Equal("/runs/lg-1/events?after=2", service.Calls[^1].Path);
     }
 
-    [Fact]
-    public async Task Cancelling_posts_cancel_and_reads_until_done()
+    [Theory]
+    [MemberData(nameof(Providers))]
+    public async Task Cancelling_posts_cancel_and_reads_until_done(string provider)
     {
         var service = new ScriptedService((req, _) => req.Method == HttpMethod.Post
             ? new HttpResponseMessage(HttpStatusCode.Accepted) { Content = new StringContent("{}") }
             : Sse(Done));
 
-        var events = await Drain(Client(service), "lg-1", new CancellationToken(canceled: true));
+        var events = await Drain(Client(provider, service), "lg-1", new CancellationToken(canceled: true));
 
         Assert.Contains(service.Calls, c => c is ("POST", "/runs/lg-1/cancel", _));
         Assert.Equal(RunOutcome.Cancelled, Assert.Single(events).PayloadAs<DonePayload>().Outcome);
     }
 
-    [Fact]
-    public async Task Resume_conflict_becomes_invalid_operation()
+    [Theory]
+    [MemberData(nameof(Providers))]
+    public async Task Resume_conflict_becomes_invalid_operation(string provider)
     {
         var service = new ScriptedService((_, _) => new HttpResponseMessage(HttpStatusCode.Conflict)
         {
@@ -129,6 +142,6 @@ public class LangGraphAgentClientTests
         });
 
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            Client(service).ResumeAsync("lg-1", new ApprovalDecision("approval_0", Decision.Approve, "analis"), default));
+            Client(provider, service).ResumeAsync("lg-1", new ApprovalDecision("approval_0", Decision.Approve, "analis"), default));
     }
 }

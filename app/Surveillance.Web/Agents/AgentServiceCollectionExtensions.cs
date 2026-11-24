@@ -58,24 +58,37 @@ public static class AgentServiceCollectionExtensions
                 });
                 break;
             case "langgraph":
-                var langGraph = new HttpAgentOptions();
-                configuration.GetSection("Agent:LangGraph").Bind(langGraph);
-                services.AddHttpClient("langgraph", c =>
-                {
-                    c.BaseAddress = new Uri(langGraph.BaseUrl.TrimEnd('/') + "/");
-                    c.Timeout = Timeout.InfiniteTimeSpan; // SSE streams stay open while the agent works
-                });
-                services.AddSingleton<IAgentClient>(sp => new LangGraphAgentClient(
-                    sp.GetRequiredService<IHttpClientFactory>().CreateClient("langgraph"),
-                    sp.GetRequiredService<ILogger<LangGraphAgentClient>>()));
+                AddHttpSseClient(services, configuration, "LangGraph",
+                    (http, sp) => new LangGraphAgentClient(http, sp.GetRequiredService<ILogger<LangGraphAgentClient>>()));
                 break;
             case "adk":
-                throw new NotSupportedException($"Agent provider '{provider}' is not implemented yet.");
+                AddHttpSseClient(services, configuration, "Adk",
+                    (http, sp) => new AdkAgentClient(http, sp.GetRequiredService<ILogger<AdkAgentClient>>()));
+                break;
             default:
                 throw new InvalidOperationException(
                     $"Unknown Agent:Provider '{provider}'. Use fake, maf, langgraph, or adk.");
         }
 
         return services;
+    }
+
+    /// <summary>Registers a client for a Python agent service configured under <c>Agent:{section}:BaseUrl</c>.</summary>
+    private static void AddHttpSseClient(IServiceCollection services, IConfiguration configuration, string section,
+        Func<HttpClient, IServiceProvider, HttpSseAgentClient> create)
+    {
+        var options = new HttpAgentOptions();
+        configuration.GetSection($"{AgentOptions.Section}:{section}").Bind(options);
+        if (string.IsNullOrWhiteSpace(options.BaseUrl))
+        {
+            throw new InvalidOperationException($"{AgentOptions.Section}:{section}:BaseUrl is not set.");
+        }
+
+        services.AddHttpClient(section, c =>
+        {
+            c.BaseAddress = new Uri(options.BaseUrl.TrimEnd('/') + "/");
+            c.Timeout = Timeout.InfiniteTimeSpan; // SSE streams stay open while the agent works
+        });
+        services.AddSingleton<IAgentClient>(sp => create(sp.GetRequiredService<IHttpClientFactory>().CreateClient(section), sp));
     }
 }
