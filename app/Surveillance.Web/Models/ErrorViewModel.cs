@@ -20,6 +20,8 @@ public class ErrorViewModel
                 "Alamat ini tidak ada atau investigasinya sudah tidak tersedia. Kembali ke daftar investigasi untuk mencari kasusnya."),
             StatusCodes.Status403Forbidden => ("Akses tidak diizinkan",
                 "Akun Anda tidak punya izin untuk membuka halaman ini. Halaman Setting hanya untuk supervisor."),
+            StatusCodes.Status504GatewayTimeout => ("Permintaan terlalu lama",
+                "Server berhenti menunggu jawaban. Proses agent tetap berjalan di latar belakang; buka daftar investigasi untuk melihat hasilnya."),
             StatusCodes.Status400BadRequest => ("Permintaan tidak bisa diproses",
                 "Data yang dikirim tidak lengkap atau formulirnya sudah kedaluwarsa. Muat ulang halaman, lalu coba lagi."),
             _ => ("Terjadi kesalahan",

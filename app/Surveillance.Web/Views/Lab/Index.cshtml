@@ -1,0 +1,20 @@
+@{
+    ViewData["Title"] = "Lab";
+}
+
+<h1 class="h3">Lab: halaman demo</h1>
+<p>
+    Halaman di sini memperagakan pola dari playbook memakai agent tiruan (fake). Tidak ada model yang dipanggil.
+    Lab hanya aktif selama solusi yang dipilih di halaman Setting adalah agent tiruan.
+</p>
+
+<div class="list-group" style="max-width: 44rem">
+    <a class="list-group-item list-group-item-action" asp-action="Transport">
+        <div class="fw-semibold">SSE dan polling berdampingan</div>
+        <div class="small text-muted">Satu kasus, dua cara menerima event. Bandingkan jumlah permintaan dan jeda.</div>
+    </a>
+    <a class="list-group-item list-group-item-action" asp-action="Sync">
+        <div class="fw-semibold">Contoh "sebelum": menunggu dalam satu permintaan</div>
+        <div class="small text-muted">Halaman membeku sampai agent berhenti, dan permintaan yang terlalu lama berakhir dengan timeout.</div>
+    </a>
+</div>

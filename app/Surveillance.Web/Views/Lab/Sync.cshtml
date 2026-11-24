@@ -1,0 +1,41 @@
+@model LabSyncViewModel
+@{
+    ViewData["Title"] = "Lab: menunggu dalam satu permintaan";
+    var timeoutSeconds = Model.TimeoutSeconds;
+}
+
+<h1 class="h3">Contoh "sebelum": menunggu dalam satu permintaan</h1>
+<p style="max-width: 44rem">
+    Tombol di bawah mengirim satu POST biasa. Server memulai investigasi dengan agent tiruan, lalu baru menjawab
+    setelah agent menunggu keputusan analis. Selama itu halaman tidak menampilkan apa pun: tidak ada narasi,
+    tidak ada daftar tool, dan tidak ada tombol hentikan. Server memutus permintaan setelah @timeoutSeconds detik,
+    seperti proxy atau gateway pada umumnya.
+</p>
+
+<form asp-action="Sync" method="post" class="card card-body mb-3" style="max-width: 44rem">
+    <div class="form-check mb-2">
+        <input class="form-check-input" type="checkbox" name="slow" value="true" id="slow" />
+        <label class="form-check-label" for="slow">Agent lambat (3 detik per tool), melewati batas @timeoutSeconds detik</label>
+    </div>
+    <div>
+        <button type="submit" class="btn btn-primary btn-sm">Mulai dan tunggu</button>
+    </div>
+    <p class="small text-muted mt-2 mb-0">
+        Batas waktu tidak berlaku saat aplikasi dijalankan dengan debugger, karena ASP.NET Core mematikannya.
+    </p>
+</form>
+
+@if (Model.Case is { } c)
+{
+    <div class="alert alert-info" style="max-width: 44rem">
+        Jawaban datang setelah <strong>@Model.Elapsed.TotalSeconds.ToString("0.0") detik</strong>. Status: @CaseStatusText.Label(c.Status).
+        Semua @Model.Events.Count event baru terlihat sekarang, sekaligus.
+        <a asp-controller="Investigation" asp-action="Details" asp-route-id="@c.Id">Buka investigasinya</a> untuk memutuskan memo.
+    </div>
+    <ol class="small">
+        @foreach (var e in Model.Events)
+        {
+            <li><code>@Surveillance.Web.Investigations.EventMapping.EnumName(e.Type)</code> · @e.Timestamp.ToString("HH:mm:ss.fff")</li>
+        }
+    </ol>
+}

@@ -56,7 +56,7 @@
     let toolCallsStarted = 0;
     let pendingApproval = null;
     let finished = false;
-    let source = null;
+    let transport = null;
     const interactive = mode === "live" && !terminalOnLoad;
 
     // ---- rendering ---------------------------------------------------------
@@ -269,7 +269,7 @@
 
     function finish() {
         finished = true;
-        if (source) source.close();
+        if (transport) transport.stop();
         if (el.stop) el.stop.remove();
         el.connection.textContent = "";
     }
@@ -325,19 +325,22 @@
 
     // ---- data sources ------------------------------------------------------
 
-    const eventTypes = ["run_started", "step_started", "token", "tool_call_started", "tool_call_finished", "approval_required", "done", "error"];
-
     function connect() {
-        // The server replays stored events first, so a reload loses nothing.
-        // EventSource resends the last id as Last-Event-ID when it reconnects.
-        source = new EventSource(root.dataset.eventsUrl);
-        source.onopen = () => (el.connection.textContent = "Terhubung");
-        source.onerror = () => {
-            if (!finished) el.connection.textContent = "Koneksi terputus, menyambung ulang...";
-        };
-        for (const type of eventTypes) {
-            source.addEventListener(type, e => handle(JSON.parse(e.data)));
-        }
+        // The transport (SSE, polling or SignalR, see js/transports/) starts after the last
+        // sequence shown, and the server replays stored events first, so a reload loses nothing.
+        transport = AgentTransports.create(root.dataset.transport, {
+            caseId: root.dataset.caseId,
+            eventsUrl: root.dataset.eventsUrl,
+            eventsJsonUrl: root.dataset.eventsJsonUrl,
+            hubUrl: root.dataset.hubUrl,
+            pollingIntervalMs: Number(root.dataset.pollingInterval),
+            lastSequence: () => lastSequence,
+            onEvent: handle,
+            onStatus: text => {
+                if (!finished) el.connection.textContent = text;
+            },
+        });
+        transport.start();
     }
 
     async function loadAll() {

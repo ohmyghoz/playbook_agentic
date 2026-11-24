@@ -162,7 +162,7 @@ public partial class InvestigationFlowTests(SurveillanceFactory factory) : IClas
         var seen = new List<string>();
         while (await reader.ReadLineAsync(cts.Token) is { } line)
         {
-            if (line.StartsWith("event: ", StringComparison.Ordinal))
+            if (line.StartsWith("event: ", StringComparison.Ordinal) && line != "event: " + SseKeepAlive.PingEvent)
             {
                 seen.Add(line[7..]);
                 if (line == "event: approval_required")
@@ -257,7 +257,10 @@ public partial class InvestigationFlowTests(SurveillanceFactory factory) : IClas
                 else if (line.StartsWith("data: ", StringComparison.Ordinal)) data += line[6..];
             }
 
-            frames.Add(new SseFrame(id, type, data));
+            if (type != SseKeepAlive.PingEvent) // keep-alive frames carry no catalog event
+            {
+                frames.Add(new SseFrame(id, type, data));
+            }
         }
 
         return frames;

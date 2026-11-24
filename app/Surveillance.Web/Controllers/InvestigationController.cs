@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Net.ServerSentEvents;
 using System.Runtime.CompilerServices;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
 using Surveillance.Agents.Abstractions;
 using Surveillance.Web.Investigations;
 using Surveillance.Web.Models;
@@ -9,7 +10,10 @@ using Surveillance.Web.Models;
 namespace Surveillance.Web.Controllers;
 
 [Route("investigations")]
-public class InvestigationController(InvestigationService investigations, AgentSelection selection) : Controller
+public class InvestigationController(
+    InvestigationService investigations,
+    AgentSelection selection,
+    IOptions<TransportOptions> transport) : Controller
 {
     [HttpGet("")]
     public async Task<IActionResult> Index(CancellationToken ct)
@@ -19,6 +23,7 @@ public class InvestigationController(InvestigationService investigations, AgentS
             Cases = await investigations.ListCasesAsync(ct),
             Form = new StartInvestigationForm(),
             ActiveAgent = await selection.ActiveNameAsync(ct),
+            LabAvailable = await selection.IsLabAvailableAsync(ct),
         };
         return View(model);
     }
@@ -54,11 +59,13 @@ public class InvestigationController(InvestigationService investigations, AgentS
         return RedirectToAction(nameof(Details), new { id = caseId });
     }
 
+    /// <param name="transportName">sse, polling or signalr; overrides Transport:Default for this page.</param>
     [HttpGet("{id:guid}")]
-    public Task<IActionResult> Details(Guid id, CancellationToken ct) => CaseView(id, replay: false, ct);
+    public Task<IActionResult> Details(Guid id, [FromQuery(Name = "transport")] string? transportName, CancellationToken ct) =>
+        CaseView(id, replay: false, transportName, ct);
 
     [HttpGet("{id:guid}/history")]
-    public Task<IActionResult> History(Guid id, CancellationToken ct) => CaseView(id, replay: true, ct);
+    public Task<IActionResult> History(Guid id, CancellationToken ct) => CaseView(id, replay: true, null, ct);
 
     /// <summary>
     /// Server-Sent Events: stored events after the client's last sequence,
@@ -74,7 +81,13 @@ public class InvestigationController(InvestigationService investigations, AgentS
             from = lastEventId;
         }
 
-        return TypedResults.ServerSentEvents(ToSse(investigations.StreamEventsAsync(id, from, ct), ct));
+        // Proxies such as nginx buffer responses unless told otherwise; see docs/PROXY.md.
+        Response.Headers["X-Accel-Buffering"] = "no";
+        Response.Headers.CacheControl = "no-cache";
+        var options = transport.Value;
+        var items = ToSse(investigations.StreamEventsAsync(id, from, ct), ct);
+        return TypedResults.ServerSentEvents(SseKeepAlive.WithPings(items,
+            TimeSpan.FromSeconds(options.SsePingSeconds), TimeSpan.FromMilliseconds(options.SseRetryMilliseconds), ct));
     }
 
     /// <summary>All stored events as a JSON array, for replay and finished runs.</summary>
@@ -130,7 +143,7 @@ public class InvestigationController(InvestigationService investigations, AgentS
         return Accepted(new { message = "Menghentikan investigasi." });
     }
 
-    private async Task<IActionResult> CaseView(Guid id, bool replay, CancellationToken ct)
+    private async Task<IActionResult> CaseView(Guid id, bool replay, string? transportName, CancellationToken ct)
     {
         var @case = await investigations.GetCaseAsync(id, ct);
         if (@case is null)
@@ -138,7 +151,12 @@ public class InvestigationController(InvestigationService investigations, AgentS
             return NotFound();
         }
 
-        return View("Details", new InvestigationDetailsViewModel { Case = @case, Replay = replay });
+        return View("Details", new InvestigationDetailsViewModel
+        {
+            Case = @case,
+            Replay = replay,
+            Transport = transport.Value.Resolve(transportName),
+        });
     }
 
     private static async IAsyncEnumerable<SseItem<string>> ToSse(IAsyncEnumerable<Data.AgentEventRecord> records,

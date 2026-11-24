@@ -1,4 +1,5 @@
 @model InvestigationDetailsViewModel
+@inject Microsoft.Extensions.Options.IOptions<Surveillance.Web.Investigations.TransportOptions> PollingInterval
 @{
     var c = Model.Case;
     var id = new System.Globalization.CultureInfo("id-ID");
@@ -13,7 +14,10 @@
      data-events-url="@Url.Action("Events", new { id = c.Id })"
      data-events-json-url="@Url.Action("EventsJson", new { id = c.Id })"
      data-approval-url="@Url.Action("Approval", new { id = c.Id })"
-     data-stop-url="@Url.Action("Stop", new { id = c.Id })">
+     data-stop-url="@Url.Action("Stop", new { id = c.Id })"
+     data-transport="@Model.Transport"
+     data-hub-url="@Url.Content("~" + Surveillance.Web.Hubs.InvestigationHub.Path)"
+     data-polling-interval="@PollingInterval.Value.PollingIntervalMilliseconds">
 
     @Html.AntiForgeryToken()
 
@@ -33,6 +37,13 @@
             }
         </div>
     </div>
+    @if (!Model.Replay && !terminal)
+    {
+        <p id="keeps-running-note" class="small text-muted mb-3">
+            Investigasi tetap berjalan di server walau tab ini ditutup. Buka halaman ini lagi kapan saja untuk melihat
+            kelanjutannya. Untuk menghentikannya, pilih <strong>Hentikan investigasi</strong>.
+        </p>
+    }
 
     @if (Model.Replay)
     {
@@ -120,5 +131,13 @@
 </template>
 
 @section Scripts {
+    @if (Model.Transport == "signalr")
+    {
+        <script src="~/lib/microsoft-signalr/signalr.min.js"></script>
+    }
+    <script src="~/js/transports/transport.js" asp-append-version="true"></script>
+    <script src="~/js/transports/transport-sse.js" asp-append-version="true"></script>
+    <script src="~/js/transports/transport-polling.js" asp-append-version="true"></script>
+    <script src="~/js/transports/transport-signalr.js" asp-append-version="true"></script>
     <script src="~/js/investigation.js" asp-append-version="true"></script>
 }

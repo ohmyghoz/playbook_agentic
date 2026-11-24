@@ -18,14 +18,17 @@ approval yang aman dari konkurensi, state machine kasus, penyimpanan event yang
 lebih cepat, dan halaman error berbahasa Indonesia.
 
 Diperbarui setelah Tahap 8: kontrak event untuk tahap alur kerja dan bukti data
-(`contracts/CHANGE-001-step-and-evidence.md`). Butir yang berubah merujuk
+(`contracts/CHANGE-001-step-and-evidence.md`).
+
+Diperbarui setelah Tahap 9: tiga transport, ping SSE dan konfigurasi proxy, halaman
+`/lab/transport` dan `/lab/sync`. Butir yang berubah merujuk
 ke nama file dan method, bukan nomor baris, karena nomor baris lama sudah bergeser.
 
 ## Ringkasan
 
 | Bab | Ya | Sebagian | Belum |
 |---|---|---|---|
-| 10. Transport dan streaming | 3 | 3 | 2 |
+| 10. Transport dan streaming | 8 | 0 | 0 |
 | 11. Pola UI/UX agentic | 5 | 5 | 1 |
 | 12. Human-in-the-loop | 4 | 4 | 0 |
 | 13. State dan durabilitas | 3 | 2 | 3 |
@@ -39,7 +42,7 @@ Kekuatan utama yang sudah ada:
 
 Kekurangan terbesar:
 
-- hanya ada satu transport (SSE); polling dan SignalR belum ada.
+- (Tahap 9) tiga transport (SSE, polling, SignalR) sudah ada; lihat `docs/TRANSPORTS.md`.
 - semua pola UI ada di satu view dan satu file JavaScript, belum dipecah per pola seperti format katalog Bab 11.
 - use case 2, retensi data, dan notifikasi belum ada.
 
@@ -74,14 +77,14 @@ File yang paling sering dirujuk:
 
 | Butir | Status | File relevan | Yang kurang |
 |---|---|---|---|
-| Skenario: spinner panjang tanpa kabar | **Ya** | `Details.cshtml`, `investigation.js:69` (`handle`) | Halaman sudah menampilkan narasi, tool call, dan status sejak event pertama. Untuk skenario "sebelum", buku perlu versi tanpa streaming sebagai pembanding (lihat butir berikut). |
-| Kenapa request-response klasik MVC tidak cukup | **Sebagian** | `InvestigationController.cs:25` (`Start`, pola POST-redirect) | Belum ada contoh endpoint klasik yang menunggu agent selesai lalu mengembalikan view, misalnya `POST /investigations/sync`. Tanpa itu, buku hanya bisa menjelaskan, belum bisa memperagakan timeout dan halaman beku. |
-| SSE, SignalR, polling: konsep dan kode | **Sebagian** | SSE: `InvestigationController.cs:64-74` (`TypedResults.ServerSentEvents`), `:124-133` (`SseItem` dengan `EventId`), `investigation.js:341` (`new EventSource`). Polling: endpoint `events.json?after=` di `InvestigationController.cs:77-83` | SSE lengkap. Polling hanya punya endpoint; belum ada klien JavaScript yang memanggilnya berkala. SignalR belum ada sama sekali (hub, `AddSignalR`, klien JS). |
-| Timeout dan proxy | **Sebagian** | `AgentServiceCollectionExtensions.cs` (`HttpClient.Timeout = InfiniteTimeSpan` untuk klien SSE ke service Python), `contracts/agent-service-api.md` (service Python wajib mengirim `: ping` tiap 15 detik) | Endpoint SSE milik aplikasi (`InvestigationService.StreamEventsAsync`, baris 186) belum mengirim ping saat menunggu, misalnya selama model berpikir lama. Di belakang proxy dengan batas idle (IIS, Azure App Service sekitar 230 detik, nginx) koneksi bisa diputus. EventSource akan menyambung ulang tanpa kehilangan event, tapi indikator koneksi berkedip. Belum ada field `retry:`, header `X-Accel-Buffering: no`, atau contoh konfigurasi proxy. |
-| Pembatalan dari sisi pengguna | **Ya** | Tombol: `Details.cshtml:32`, `investigation.js:315`. Endpoint: `InvestigationController.cs:105`. Alur: `InvestigationService.StopAsync` → `RunPump.Stop` (`RunPump.cs:37`). Kontrak: `IAgentClient.cs` (token pembatalan), `agent-service-api.md` (`POST /runs/{id}/cancel`) | Sudah lengkap untuk keempat adapter. Untuk buku, perlu ditegaskan bahwa menutup tab tidak membatalkan run (sengaja); hanya tombol Hentikan. |
-| Menyambung kembali tanpa kehilangan event | **Ya** | `InvestigationController.cs:68` (`Last-Event-ID`), `InvestigationService.cs:186-222` (berlangganan dulu, baru baca DB), `investigation.js:70` (buang duplikat berdasarkan `sequence`), `HttpSseAgentClient.cs` (menyambung ulang ke service Python dari `sequence` terakhir) | Sudah teruji (test `Sse_replays_from_after...` dan contract test `Streaming_again_while_paused_yields_nothing_new`). |
-| Memilih transport | **Belum** | – | Tidak ada perbandingan atau pilihan transport di aplikasi. Butuh polling dan SignalR dulu, lalu tabel pertimbangan (arah komunikasi, proxy, skala, dukungan browser). |
-| Demo 10-1: SSE vs polling berdampingan | **Belum** | – | Butuh halaman demo dengan dua panel untuk kasus yang sama: kiri `EventSource`, kanan polling `events.json?after=` tiap N detik, ditambah penghitung jumlah request dan jeda. Endpoint yang dibutuhkan sudah ada. |
+| Skenario: spinner panjang tanpa kabar | **Ya** | `Details.cshtml`, `investigation.js` (`handle`); pembanding "sebelum": `/lab/sync` | Halaman menampilkan narasi, tool call, dan status sejak event pertama. `/lab/sync` memperagakan versi tanpa streaming. |
+| Kenapa request-response klasik MVC tidak cukup | **Ya** | `LabController.Sync` (`POST /lab/sync`, `[RequestTimeout]` dengan kebijakan `lab-sync`), `Views/Lab/Sync.cshtml` | Halaman membeku sampai agent menunggu approval. Skenario lambat melewati batas 20 detik dan berakhir HTTP 504 berbahasa Indonesia, sementara run tetap berjalan di server. Test: `Lab_sync_answers_after_the_run_pauses_and_times_out_when_slow`. |
+| SSE, SignalR, polling: konsep dan kode | **Ya** | Antarmuka: `wwwroot/js/transports/transport.js`; implementasi: `transport-sse.js`, `transport-polling.js`, `transport-signalr.js`; server: `InvestigationController.Events` dan `EventsJson`, `Hubs/InvestigationHub.cs` (grup per kasus, `JoinCase` dari `sequence` terakhir), `Hubs/InvestigationHubRelay.cs` (sumbernya `EventBroadcaster`) | Dipilih lewat `Transport:Default` atau `?transport=`. Diuji di browser: satu kasus sampai `done` lewat ketiganya tanpa event hilang atau ganda. Test: `SignalRTransportTests`, `SseAndLabTransportTests`. |
+| Timeout dan proxy | **Ya** | `SseKeepAlive.cs` (ping langsung saat terhubung dan setiap 15 detik tanpa event, `retry:` 3000 ms), header `X-Accel-Buffering: no` dan `Cache-Control: no-cache` di `InvestigationController.Events`, `docs/PROXY.md` (IIS, nginx, Azure App Service) | Contoh IIS/ARR di `PROXY.md` belum diuji di server IIS dan ditandai demikian. |
+| Pembatalan dari sisi pengguna | **Ya** | Tombol dan catatan "tetap berjalan walau tab ditutup" di `Details.cshtml`; `InvestigationService.StopAsync` → `RunPump.Stop`; kontrak: `IAgentClient` (token pembatalan), `agent-service-api.md` (`POST /runs/{id}/cancel`) | Antarmuka menegaskan bahwa menutup tab tidak menghentikan investigasi; hanya tombol Hentikan. |
+| Menyambung kembali tanpa kehilangan event | **Ya** | SSE: `Last-Event-ID`; polling: `after=`; SignalR: `JoinCase(caseId, after)` setelah `onreconnected`; `InvestigationService.StreamEventsAsync` (berlangganan dulu, baru baca DB); `HttpSseAgentClient.cs` | Teruji untuk ketiga transport, termasuk tombol "Putuskan dan sambung ulang" di `/lab/transport`. |
+| Memilih transport | **Ya** | `docs/TRANSPORTS.md` (tabel pertimbangan: arah, koneksi, jeda terukur, jumlah request, proxy, library), `TransportOptions.cs` | – |
+| Demo 10-1: SSE vs polling berdampingan | **Ya** | `/lab/transport` (`Views/Lab/Transport.cshtml`, `wwwroot/js/lab-transport.js`) | Dua panel untuk kasus yang sama dengan penghitung request, event, duplikat, dan jeda rata-rata, serta pilihan interval polling. Contoh hasil: SSE 1 request dengan jeda 81 ms, polling 14 request dengan jeda 1.083 ms. |
 
 Catatan teknis untuk Bab 10: `RunPump.PersistAsync` menyimpan setiap event ke
 Azure SQL sebelum event dikirim ke browser. Sejak Tahap 7, satu event butuh
@@ -154,6 +157,6 @@ paling dibutuhkan buku.
 | Label tool yang ramah | 11 | Field opsional `displayName` di `tool_call_started` | Ya, dengan peta nama tool ke label di JavaScript. Disarankan tanpa perubahan kontrak. |
 
 Hal yang **tidak** butuh perubahan kontrak: ping keep-alive di SSE aplikasi,
-polling, SignalR, partial view per pola, halaman antrean approval, repository,
+partial view per pola, halaman antrean approval, repository,
 retensi, dan halaman demo. Perbaikan konkurensi keputusan dan autentikasi
 sudah dikerjakan di Tahap 7 tanpa perubahan kontrak.

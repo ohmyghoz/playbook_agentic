@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Surveillance.Web.Agents;
 using Surveillance.Web.Auth;
 using Surveillance.Web.Data;
+using Surveillance.Web.Hubs;
 using Surveillance.Web.Investigations;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -42,6 +43,14 @@ builder.Services.AddSingleton<RunPump>();
 builder.Services.AddSingleton<InvestigationService>();
 builder.Services.AddHostedService<StartupRecovery>();
 
+// Event transports to the browser: SSE (controller), polling (events.json) and SignalR (hub).
+builder.Services.Configure<TransportOptions>(builder.Configuration.GetSection("Transport"));
+builder.Services.AddSignalR();
+// The /lab/sync counter-example gives up like a proxy or gateway would.
+builder.Services.AddRequestTimeouts(options => options.AddPolicy(Surveillance.Web.Controllers.LabController.SyncTimeoutPolicy,
+    TimeSpan.FromSeconds(builder.Configuration.GetValue("Lab:SyncTimeoutSeconds", 20))));
+builder.Services.AddHostedService<InvestigationHubRelay>();
+
 var app = builder.Build();
 
 if (!app.Environment.IsDevelopment())
@@ -55,11 +64,14 @@ app.UseStatusCodePagesWithReExecute("/error/{0}");
 
 app.UseHttpsRedirection();
 app.UseRouting();
+app.UseRequestTimeouts();
 
 app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapStaticAssets().AllowAnonymous();
+
+app.MapHub<InvestigationHub>(InvestigationHub.Path);
 
 app.MapControllerRoute(
     name: "default",

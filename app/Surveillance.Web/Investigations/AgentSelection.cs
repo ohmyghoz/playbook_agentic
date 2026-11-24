@@ -28,6 +28,10 @@ public sealed class AgentSelection(
         return stored is not null && registry.IsKnown(stored) ? stored : options.Value.Provider.ToLowerInvariant();
     }
 
+    /// <summary>Demo pages under /lab run only with the scripted agent, so they never call a model.</summary>
+    public async Task<bool> IsLabAvailableAsync(CancellationToken ct) =>
+        await GetActiveAsync(ct) == AgentClientRegistry.Fake;
+
     public async Task<bool> SetActiveAsync(string key, CancellationToken ct)
     {
         if (!registry.IsKnown(key))

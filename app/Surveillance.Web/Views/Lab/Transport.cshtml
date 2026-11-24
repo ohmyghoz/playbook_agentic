@@ -1,0 +1,90 @@
+@model LabTransportViewModel
+@{
+    ViewData["Title"] = "Lab: SSE dan polling";
+}
+
+<h1 class="h3">SSE dan polling berdampingan</h1>
+<p style="max-width: 48rem">
+    Kedua panel membaca kasus yang sama dari server. Kiri memakai Server-Sent Events: satu koneksi yang terus
+    terbuka. Kanan memakai polling: browser bertanya berkala. Perhatikan jumlah permintaan dan jeda rata-rata
+    antara event dibuat dan event tampil.
+</p>
+
+<div class="card card-body mb-3" style="max-width: 48rem">
+    <div class="d-flex flex-wrap gap-2 align-items-end">
+        <form method="get" asp-action="Transport" class="d-flex gap-2 align-items-end">
+            <div>
+                <label class="form-label small mb-1" for="caseId">Kasus</label>
+                <select class="form-select form-select-sm" id="caseId" name="caseId">
+                    @foreach (var c in Model.Cases)
+                    {
+                        <option value="@c.Id" selected="@(c.Id == Model.CaseId)">@c.Symbol · @CaseStatusText.Label(c.Status) · @c.Id.ToString()[..8]</option>
+                    }
+                </select>
+            </div>
+            <button type="submit" class="btn btn-outline-secondary btn-sm">Pilih</button>
+        </form>
+        <form method="post" asp-action="StartForTransport">
+            <button type="submit" class="btn btn-primary btn-sm">Mulai investigasi baru</button>
+        </form>
+    </div>
+</div>
+
+@if (Model.CaseId is { } caseId)
+{
+    <div id="lab-transport" class="row g-3"
+         data-case-id="@caseId"
+         data-events-url="@Url.Action("Events", "Investigation", new { id = caseId })"
+         data-events-json-url="@Url.Action("EventsJson", "Investigation", new { id = caseId })">
+        <div class="col-md-6">
+            <section class="card h-100" data-transport="sse">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <strong>SSE</strong>
+                    <span class="small text-muted panel-status"></span>
+                </div>
+                <div class="card-body">
+                    <div class="small mb-2 panel-stats"></div>
+                    <button type="button" class="btn btn-outline-secondary btn-sm panel-reconnect">Putuskan dan sambung ulang</button>
+                    <ol class="small mt-2 mb-0 panel-log"></ol>
+                </div>
+            </section>
+        </div>
+        <div class="col-md-6">
+            <section class="card h-100" data-transport="polling">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <strong>Polling</strong>
+                    <span class="small text-muted panel-status"></span>
+                </div>
+                <div class="card-body">
+                    <div class="d-flex align-items-center gap-2 mb-2">
+                        <label class="small" for="polling-interval">Interval</label>
+                        <select id="polling-interval" class="form-select form-select-sm w-auto">
+                            <option value="1000">1 detik</option>
+                            <option value="2000" selected>2 detik</option>
+                            <option value="5000">5 detik</option>
+                        </select>
+                    </div>
+                    <div class="small mb-2 panel-stats"></div>
+                    <button type="button" class="btn btn-outline-secondary btn-sm panel-reconnect">Putuskan dan sambung ulang</button>
+                    <ol class="small mt-2 mb-0 panel-log"></ol>
+                </div>
+            </section>
+        </div>
+    </div>
+    <p class="small text-muted mt-3">
+        Saat agent menunggu keputusan,
+        <a asp-controller="Investigation" asp-action="Details" asp-route-id="@caseId" target="_blank">buka investigasinya di tab lain</a>
+        dan putuskan memo. Kedua panel akan menerima event lanjutannya.
+    </p>
+}
+else
+{
+    <p>Pilih kasus atau mulai investigasi baru.</p>
+}
+
+@section Scripts {
+    <script src="~/js/transports/transport.js" asp-append-version="true"></script>
+    <script src="~/js/transports/transport-sse.js" asp-append-version="true"></script>
+    <script src="~/js/transports/transport-polling.js" asp-append-version="true"></script>
+    <script src="~/js/lab-transport.js" asp-append-version="true"></script>
+}

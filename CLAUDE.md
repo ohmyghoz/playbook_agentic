@@ -397,7 +397,7 @@ Selesai jika: contract test kedua use case lulus atau setiap kegagalan dijelaska
   - [ ] ~~Tahap 6b: use case 2 di satu solusi~~ dibatalkan 2026-11-25, digantikan Tahap 13 sampai 15
 - [x] Tahap 7: fondasi untuk Bagian IV
 - [x] Tahap 8: evolusi kontrak untuk progres dan bukti
-- [ ] Tahap 9: transport (Bab 10)
+- [x] Tahap 9: transport (Bab 10)
 - [ ] Tahap 10: pola UI (Bab 11)
 - [ ] Tahap 11: approval (Bab 12)
 - [ ] Tahap 12: durabilitas (Bab 13)
@@ -459,4 +459,7 @@ Tambahkan satu baris per keputusan: tanggal, keputusan, alasan singkat.
 - 2026-11-25: Tahap 8 (CHANGE-001): tahap ditentukan adapter dari nama tool, bukan dilaporkan model, supaya urutannya sama di keempat solusi dan bisa diuji. `measure` tepat setelah `run_started`, `assess` sebelum `submit_memo` pertama, `memo` sebelum `approval_required` pertama; tahap hanya maju. Aturan ada di `InvestigationSteps.cs` (fake, MAF) dan `steps.py` (LangGraph, ADK, salinan sama).
 - 2026-11-25: Tahap 8: `source` berbentuk objek (`server`, `provider`, `fetchedAt`, `stale`) dari amplop idx, bukan string, supaya waktu data bisa ditampilkan di panel bukti. `resultPreview` dipotong di batas karakter UTF-8 dengan penanda `
 …[dipotong]` di dalam batas 8192 byte. Aplikasi menyimpan pratinjau di tabel `ToolResultPreviews` dan endpoint `GET /investigations/{id}/tools/{toolCallId}/preview`.
+- 2026-11-25: Tahap 9: SignalR memakai grup per kasus dan `JoinCase(caseId, after)` yang bergabung ke grup dulu lalu membaca database, sehingga tidak ada event yang jatuh di antaranya; event live dikirim `InvestigationHubRelay` dari `EventBroadcaster.SubscribeAll`. Klien `@microsoft/signalr` 10.0.11 disalin ke `wwwroot/lib/microsoft-signalr` (tanpa npm di proyek) dan hanya dimuat untuk `?transport=signalr`. Test .NET memakai `Microsoft.AspNetCore.SignalR.Client` 10.0.15 dengan long polling karena TestServer.
+- 2026-11-25: Tahap 9: endpoint SSE langsung mengirim satu `ping` saat koneksi dibuka. Ditemukan saat uji browser: tanpa itu respons belum mulai selama run menunggu approval, `EventSource.onopen` tidak terpanggil, dan status koneksi tetap "terputus".
+- 2026-11-25: Tahap 9: `/lab/sync` memakai kebijakan request timeout `lab-sync` (`Lab:SyncTimeoutSeconds`, bawaan 20) supaya test bisa memakai 2 detik. Batas waktu ini tidak berlaku saat debugger terpasang. Halaman `/lab` dijaga `LabAvailableFilter` (404 bila solusi aktif bukan fake).
 - 2026-11-24: Catatan keamanan: server Azure SQL punya aturan firewall `AllowAll-Experiment` (0.0.0.0–255.255.255.255). Belum diubah; sebaiknya dihapus dan diganti aturan per IP.

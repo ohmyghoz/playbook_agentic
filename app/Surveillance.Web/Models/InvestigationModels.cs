@@ -8,6 +8,8 @@ namespace Surveillance.Web.Models;
 
 public class InvestigationIndexViewModel
 {
+    public bool LabAvailable { get; init; }
+
     public required List<InvestigationCase> Cases { get; init; }
     public required StartInvestigationForm Form { get; init; }
 
@@ -27,6 +29,10 @@ public class InvestigationDetailsViewModel
 {
     public required InvestigationCase Case { get; init; }
     public bool Replay { get; init; }
+
+    /// <summary>sse, polling or signalr (see TransportOptions).</summary>
+    public string Transport { get; init; } = "sse";
+
     public AnomalyTrigger Trigger => JsonSerializer.Deserialize<AnomalyTrigger>(Case.TriggerJson, AgentJson.Options)!;
 }
 
@@ -122,4 +128,18 @@ public static class CaseStatusText
         "reject" => "Tolak",
         _ => decision,
     };
+}
+
+public class LabSyncViewModel
+{
+    public InvestigationCase? Case { get; init; }
+    public TimeSpan Elapsed { get; init; }
+    public int TimeoutSeconds { get; init; }
+    public List<AgentEvent> Events { get; init; } = [];
+}
+
+public class LabTransportViewModel
+{
+    public List<InvestigationCase> Cases { get; init; } = [];
+    public Guid? CaseId { get; init; }
 }

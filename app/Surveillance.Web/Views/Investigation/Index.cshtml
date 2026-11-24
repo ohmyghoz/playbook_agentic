@@ -16,7 +16,11 @@
                     Agent aktif: <strong>@Model.ActiveAgent</strong>
                     @if (User.IsInRole(Surveillance.Web.Auth.Roles.Supervisor))
                     {
-                        <text>· <a asp-controller="Settings" asp-action="Index">Ubah di Setting</a></text>
+                        <text> · <a asp-controller="Settings" asp-action="Index">Ubah di Setting</a></text>
+                    }
+                    @if (Model.LabAvailable)
+                    {
+                        <text> · <a asp-controller="Lab" asp-action="Index">Halaman demo (Lab)</a></text>
                     }
                 </p>
                 <form asp-action="Start" method="post">
