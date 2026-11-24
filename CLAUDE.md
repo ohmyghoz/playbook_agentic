@@ -172,7 +172,7 @@ Selesai jika: contract test lulus atau setiap kegagalan dijelaskan di `COMPATIBI
 - [x] Tahap 1: MCP IDX server
 - [x] Tahap 2: aplikasi MVC dengan agent tiruan
 - [x] Tahap 3: solusi MAF
-- [ ] Tahap 4: solusi LangGraph
+- [x] Tahap 4: solusi LangGraph
 - [ ] Tahap 5: solusi Google ADK
 - [ ] Tahap 6: contract test dan use case 2
 
@@ -203,4 +203,11 @@ Tambahkan satu baris per keputusan: tanggal, keputusan, alasan singkat.
 - 2026-11-24: Instruksi sistem bersama di ASD diperbarui setelah uji live MAF: menyebut `idx_stockbit_actions` secara eksplisit (model sebelumnya memilih `idx_corporate_actions` yang gagal) dan meminta satu kalimat narasi sebelum setiap tool (gpt-5-mini sebelumnya tidak menulis narasi sama sekali). LangGraph dan ADK memakai teks yang sama.
 - 2026-11-24: Batas langkah: panggilan paralel dalam satu giliran model yang melewati batas hanya diberi peringatan; `step_limit_exceeded` baru jika model meminta tool lagi di giliran berikutnya. Ditemukan saat uji live; berlaku juga untuk LangGraph dan ADK.
 - 2026-11-24: Setelah memo disetujui, adapter langsung memancarkan `done` tanpa meminta balasan penutup dari model. Teks model digabung sekitar 60 karakter per event `token`.
+- 2026-11-25: Data bandar dibiarkan "tidak tersedia" sampai IPOT pulih (idx 0.8.4 hanya membaca bandar dari IPOT; perbaikan direncanakan di idx 0.8.5). Tidak menghitung bandar sendiri dari data broker.
+- 2026-11-25: Model Solusi 2 (LangGraph): `qwen/qwen3-30b-a3b-instruct-2507` lewat OpenRouter. Varian `qwen3-30b-a3b` biasa hanya punya konteks 40K, tidak cukup untuk keluaran tool idx yang besar.
+- 2026-11-25: `agent-service-api.md` punya endpoint keempat `POST /runs/{id}/cancel` (disetujui) dan `GET /health`. Tanpa cancel, tombol Hentikan tidak bisa menghentikan run Python yang sedang menunggu approval.
+- 2026-11-25: LangGraph memakai `StateGraph` eksplisit (bukan `create_agent`) supaya graph terlihat untuk perbandingan; `ChatOpenAI(base_url=...)` sesuai `MODEL_BASE_URL` walau dokumentasi menyarankan `langchain-openrouter`; MCP lewat `langchain.mcp` (`MCPAdapter`, beta) karena `langchain-mcp-adapters` tidak dirawat; `AsyncSqliteSaver` dengan `durability="sync"`; event disimpan service di `data/service.db`.
+- 2026-11-25: Giliran model yang hanya berisi teks dianggap narasi; agent diberi pesan "Lanjutkan…" dan gagal setelah 3 giliran teks berturut-turut. Ditemukan saat uji live (Qwen memisahkan narasi dan tool call); berlaku di MAF dan LangGraph.
+- 2026-11-25: Folder data LangGraph memakai `LANGGRAPH_DATA_DIR`, bukan `DATA_DIR`, karena `DATA_DIR` di mesin ini milik open-webui. `.env` service dibaca dengan `override=True` supaya tidak kalah oleh variable sistem bernama sama.
+- 2026-11-25: Test di C# dan Python membandingkan teks instruksi di kode dengan blok teks di ASD, supaya ketiga solusi tidak diam-diam berbeda.
 - 2026-11-24: Catatan keamanan: server Azure SQL punya aturan firewall `AllowAll-Experiment` (0.0.0.0–255.255.255.255). Belum diubah; sebaiknya dihapus dan diganti aturan per IP.

@@ -218,6 +218,35 @@ public sealed class MafAgentClientTests : IDisposable
     }
 
     [Fact]
+    public async Task Narration_in_separate_turns_continues_the_run()
+    {
+        // Seen live with Qwen on LangGraph; the same rule applies here.
+        var chat = new ScriptedChatClient(
+            _ => [Text("Memeriksa harga.")],
+            _ => [Call("c2", "idx_quote")],
+            _ => [Text("Menyusun memo.")],
+            _ => [Call("m1", "submit_memo", MemoArgs("c2"))]);
+        var client = Client(chat);
+
+        var events = await Drain(client, await client.StartAsync(Request, default));
+
+        EventAssertions.AssertWellFormedRun(events, expectTerminal: false);
+    }
+
+    [Fact]
+    public async Task Too_many_text_only_turns_end_with_model_error()
+    {
+        var chat = new ScriptedChatClient { Fallback = _ => [Text("Masih berpikir.")] };
+        var client = Client(chat);
+
+        var events = await Drain(client, await client.StartAsync(Request, default));
+
+        EventAssertions.AssertWellFormedRun(events, expectTerminal: true);
+        Assert.Equal(AgentErrorCode.ModelError, events[^1].PayloadAs<ErrorPayload>().Code);
+        Assert.Equal(3, chat.Requests.Count);
+    }
+
+    [Fact]
     public async Task Cancel_during_model_stream_ends_cancelled()
     {
         var chat = new ScriptedChatClient(_ => [Text("Satu "), Text("dua "), Text("tiga")]) { Delay = TimeSpan.FromMilliseconds(300) };

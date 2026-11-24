@@ -10,13 +10,17 @@ public static class RepoPaths
 
     public static string Contracts(string file) => Path.Combine(Root, "contracts", file);
 
-    private static string FindRoot()
+    // Search from the build output and, for builds outside the repo (--artifacts-path), from this source file.
+    private static string FindRoot([System.Runtime.CompilerServices.CallerFilePath] string sourceFile = "")
     {
-        for (var dir = new DirectoryInfo(AppContext.BaseDirectory); dir is not null; dir = dir.Parent)
+        foreach (var start in new[] { AppContext.BaseDirectory, Path.GetDirectoryName(sourceFile) ?? "" })
         {
-            if (File.Exists(Path.Combine(dir.FullName, "Surveillance.slnx")))
+            for (var dir = new DirectoryInfo(start); dir is not null; dir = dir.Parent)
             {
-                return dir.FullName;
+                if (File.Exists(Path.Combine(dir.FullName, "Surveillance.slnx")))
+                {
+                    return dir.FullName;
+                }
             }
         }
 

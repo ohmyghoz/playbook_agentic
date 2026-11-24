@@ -39,7 +39,7 @@ diuji dengan `IChatClient` tiruan.
 | Token pembatalan | `tool_call_finished` (`error`, kode `cancelled`) untuk tool yang terbuka, lalu `done` (`cancelled`) | |
 | `ClientResultException` dari OpenAI | `error` (`model_error`, `retryable: true`) | Klien OpenAI sudah mencoba ulang sendiri |
 | MCP tidak bisa dihubungi saat run mulai | `error` (`mcp_unavailable`, `retryable: true`) | |
-| Model selesai tanpa memanggil `submit_memo` | Satu pesan pengingat. Jika tetap tidak, `error` (`model_error`) | |
+| Giliran model yang hanya berisi teks | Pesan "Lanjutkan…" ke model | Dianggap narasi. Setelah 3 giliran teks berturut-turut tanpa tool call, `error` (`model_error`). Aturan sama dengan LangGraph |
 
 ## Perbedaan dengan kontrak dan cara menyerapnya
 

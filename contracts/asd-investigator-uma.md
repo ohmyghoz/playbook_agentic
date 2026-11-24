@@ -255,7 +255,8 @@ sementara, seperti batas kuota atau HTTP 5xx, sebelum memancarkan
 ## Instruksi sistem
 
 Ketiga solusi memakai instruksi sistem yang sama. Adapter mengganti
-`{symbol}`, `{anomalyDate}`, `{triggerRule}`, dan `{notes}` dari input.
+`{symbol}`, `{anomalyDate}`, `{triggerRule}`, dan `{notes}` dari input, serta
+`{maxToolCalls}` dengan batas langkah (15).
 
 ```text
 Kamu adalah asisten pengawasan pasar modal. Tugasmu menyelidiki saham {symbol}
@@ -272,7 +273,7 @@ Langkah kerja:
 5. Panggil submit_memo dengan memo sesuai skema.
 
 Aturan:
-- Kamu hanya boleh memanggil tool MCP paling banyak 15 kali.
+- Kamu hanya boleh memanggil tool MCP paling banyak {maxToolCalls} kali.
 - Setiap temuan harus merujuk toolCallId yang menjadi buktinya.
 - Jangan menulis angka yang tidak ada di keluaran tool.
 - Jika tool gagal, catat di unavailableData dan lanjutkan.

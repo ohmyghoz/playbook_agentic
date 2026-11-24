@@ -51,6 +51,7 @@
     };
 
     let lastSequence = 0;
+    let lastType = null;
     let maxToolCalls = null;
     let toolCallsStarted = 0;
     let pendingApproval = null;
@@ -69,6 +70,8 @@
         if (event.sequence <= lastSequence) return; // already shown (replay or reconnect overlap)
         lastSequence = event.sequence;
         const p = event.payload;
+        const previousType = lastType;
+        lastType = event.type;
 
         switch (event.type) {
             case "run_started":
@@ -77,6 +80,10 @@
                 setStatus("running");
                 break;
             case "token":
+                // Text from a new model turn starts on its own line.
+                if (previousType !== "token" && el.narrative.textContent && !/\s$/.test(el.narrative.textContent)) {
+                    el.narrative.append(document.createTextNode("\n"));
+                }
                 el.narrative.append(document.createTextNode(p.text));
                 el.narrative.scrollTop = el.narrative.scrollHeight;
                 break;
@@ -351,6 +358,7 @@
 
     function resetView() {
         lastSequence = 0;
+        lastType = null;
         toolCallsStarted = 0;
         maxToolCalls = null;
         pendingApproval = null;

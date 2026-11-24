@@ -18,7 +18,8 @@ namespace Surveillance.Agents.Maf;
 public sealed class MafAgentClient : IAgentClient
 {
     private const string RevisePrefix = "Analis meminta revisi: ";
-    private const string NudgeMessage = "Kamu belum memanggil submit_memo. Susun memo dari data yang sudah ada lalu panggil submit_memo.";
+    private const string ContinueMessage = "Lanjutkan: panggil tool berikutnya, atau panggil submit_memo jika data sudah cukup.";
+    private const int MaxTextOnlyTurns = 3;
     private const int MaxInvalidMemoAttempts = 3;
 
     private readonly MafAgentOptions _options;
@@ -234,9 +235,11 @@ public sealed class MafAgentClient : IAgentClient
     private async Task RunUntilPauseOrEndAsync(AIAgent agent, AgentSession session, List<ChatMessage> input,
         RunState state, ToolLimits limits, Emitter emit, CancellationToken ct)
     {
-        var nudged = false;
+        // Some models narrate in one turn and call the tool in the next; count consecutive text-only turns.
+        var textOnlyTurns = 0;
         while (true)
         {
+            var callsBefore = state.StartedCallIds.Count;
             var autoApprovals = new List<AIContent>();
             ToolApprovalRequestContent? submitRequest = null;
             var submitExecuted = false;
@@ -343,10 +346,11 @@ public sealed class MafAgentClient : IAgentClient
                 continue;
             }
 
-            if (!nudged)
+            // The pass ended with a reply that called no tool: its last turn was text only.
+            textOnlyTurns = state.StartedCallIds.Count > callsBefore ? 1 : textOnlyTurns + 1;
+            if (textOnlyTurns < MaxTextOnlyTurns)
             {
-                nudged = true;
-                input = [new ChatMessage(ChatRole.User, NudgeMessage)];
+                input = [new ChatMessage(ChatRole.User, ContinueMessage)];
                 continue;
             }
 

@@ -3,6 +3,7 @@ using OpenAI;
 using Surveillance.Agents.Abstractions;
 using Surveillance.Agents.Maf;
 using Surveillance.Web.Agents.Fake;
+using Surveillance.Web.Agents.Http;
 
 namespace Surveillance.Web.Agents;
 
@@ -57,6 +58,17 @@ public static class AgentServiceCollectionExtensions
                 });
                 break;
             case "langgraph":
+                var langGraph = new HttpAgentOptions();
+                configuration.GetSection("Agent:LangGraph").Bind(langGraph);
+                services.AddHttpClient("langgraph", c =>
+                {
+                    c.BaseAddress = new Uri(langGraph.BaseUrl.TrimEnd('/') + "/");
+                    c.Timeout = Timeout.InfiniteTimeSpan; // SSE streams stay open while the agent works
+                });
+                services.AddSingleton<IAgentClient>(sp => new LangGraphAgentClient(
+                    sp.GetRequiredService<IHttpClientFactory>().CreateClient("langgraph"),
+                    sp.GetRequiredService<ILogger<LangGraphAgentClient>>()));
+                break;
             case "adk":
                 throw new NotSupportedException($"Agent provider '{provider}' is not implemented yet.");
             default:
