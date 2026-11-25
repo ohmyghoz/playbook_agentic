@@ -224,7 +224,7 @@ async def test_run_interrupted_mid_stream_is_closed_on_restart(data_dir):
         events = await drain(second, run_id)
 
     assert_well_formed(events, terminal=True)
-    assert events[-1]["payload"]["code"] == "internal" and events[-1]["payload"]["retryable"]
+    assert events[-1]["payload"]["code"] == "run_interrupted" and events[-1]["payload"]["retryable"]
 
 
 async def test_resume_errors_follow_the_contract(data_dir):

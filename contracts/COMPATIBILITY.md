@@ -131,7 +131,7 @@ view tidak perlu tahu solusi mana yang bekerja. Detailnya ada di
 | Pembatalan | Token `StreamAsync` | Token `StreamAsync` | `POST /runs/{id}/cancel`, lalu task asyncio dibatalkan | `POST /runs/{id}/cancel`, lalu `abort_signal` |
 | Penghitung batas langkah | Skrip | Function middleware | Node `tools` | `before_tool_callback` |
 | Approval bertahan setelah restart | Tidak (run di memori) | Ya (file JSON per run) | Ya (`AsyncSqliteSaver`) | Ya (`DatabaseSessionService`) |
-| Stream setelah aplikasi restart | Run hilang, ditutup `error internal` | Hanya event baru | Diputar ulang dari `sequence` 1; duplikat dibuang `RunPump` | Sama dengan LangGraph |
+| Stream setelah aplikasi restart | Run hilang, ditutup `run_interrupted` (CHANGE-003) | Run yang sedang berjalan ditutup `run_interrupted`; jeda approval dilanjutkan | Diputar ulang dari `sequence` 1; duplikat dibuang `RunPump` | Sama dengan LangGraph |
 | MCP tidak tersedia terdeteksi | – | Saat memuat tool | Saat memuat tool | Pemeriksaan `get_tools()` di awal run, karena ADK sendiri tetap berjalan tanpa tool |
 | Coba ulang model | – | Klien OpenAI bawaan | `max_retries=2` | `retry_options` (2 kali untuk 429 dan 5xx) |
 

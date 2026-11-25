@@ -171,9 +171,9 @@ class RunManager:
     async def recover(self) -> None:
         """Closes runs that were streaming when the service stopped; paused runs stay resumable."""
         for run in await self._store.by_status("running"):
-            await self._close_open_calls(run, "internal", "Service berhenti di tengah run.")
-            await self._emit(run, "error", {"code": "internal", "retryable": True,
-                                            "message": "Investigasi terputus karena service agent dinyalakan ulang. Mulai investigasi baru."})
+            await self._close_open_calls(run, "run_interrupted", "Service berhenti di tengah run.")
+            await self._emit(run, "error", {"code": "run_interrupted", "retryable": True,
+                                            "message": "Investigasi terputus karena service agent dinyalakan ulang saat agent sedang bekerja. Data yang sudah masuk tetap tersimpan. Pilih Mulai ulang dengan data yang sama untuk menjalankannya lagi."})
 
     async def shutdown(self) -> None:
         tasks = [t for t in self._tasks.values() if not t.done()]

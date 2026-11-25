@@ -203,6 +203,7 @@
             "model_error",
             "mcp_unavailable",
             "invalid_input",
+            "run_interrupted",
             "internal"
           ]
         },

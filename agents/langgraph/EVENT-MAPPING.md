@@ -77,3 +77,10 @@ tool, sama persis dengan ketiga adapter lain. Detail dan alasannya ada di
 
 - Pembatalan task asyncio di tengah `astream` tidak terdokumentasi. `test_cancel_during_model_call_ends_cancelled` memastikan pembatalan menutup run dengan `done(cancelled)`.
 - Melanjutkan run setelah checkpointer dan service dibuka ulang dipastikan oleh `test_paused_run_survives_a_service_restart`.
+
+## Run terputus karena restart (CHANGE-003)
+
+Run yang sedang berjalan saat proses berhenti ditutup dengan `error` kode
+`run_interrupted` dan `retryable: true`, bukan lagi `internal`. Lihat
+`docs/RESTART.md`.
+`RunManager.recover` menulisnya untuk run berstatus `running` saat service start.

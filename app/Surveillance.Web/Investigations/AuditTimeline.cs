@@ -1,8 +1,8 @@
 using System.Text;
 using System.Text.Json;
-using Microsoft.EntityFrameworkCore;
 using Surveillance.Agents.Abstractions;
 using Surveillance.Web.Data;
+using Surveillance.Web.Data.Repositories;
 
 namespace Surveillance.Web.Investigations;
 
@@ -15,20 +15,19 @@ public sealed record AuditEntry(DateTime At, string Source, string Actor, string
 /// Keputusan kontrak: decisions stay out of the event stream; the application merges them here.
 /// Consecutive token events become one narration entry so the timeline stays readable.
 /// </summary>
-public sealed class AuditTimeline(IDbContextFactory<SurveillanceDbContext> dbFactory)
+public sealed class AuditTimeline(ICaseRepository cases, IEventRepository eventStore, IApprovalRepository approvals)
 {
     public async Task<List<AuditEntry>?> BuildAsync(Guid caseId, CancellationToken ct)
     {
-        await using var db = await dbFactory.CreateDbContextAsync(ct);
-        var @case = await db.Cases.AsNoTracking().SingleOrDefaultAsync(c => c.Id == caseId, ct);
+        var @case = await cases.GetAsync(caseId, ct);
         if (@case is null)
         {
             return null;
         }
 
-        var events = await db.Events.AsNoTracking().Where(e => e.CaseId == caseId).OrderBy(e => e.Sequence).ToListAsync(ct);
-        var decisions = await db.Decisions.AsNoTracking().Where(d => d.CaseId == caseId).ToListAsync(ct);
-        var audit = await db.Audit.AsNoTracking().Where(a => a.CaseId == caseId).ToListAsync(ct);
+        var events = await eventStore.GetAfterAsync(caseId, 0, ct);
+        var decisions = await approvals.ListDecisionsAsync(caseId, ct);
+        var audit = await approvals.ListAuditAsync(caseId, ct);
         var agent = $"Agent ({@case.Provider})";
 
         var entries = new List<AuditEntry>

@@ -46,8 +46,8 @@ public class PersistBenchmark(ITestOutputHelper output)
                 sql => sql.EnableRetryOnFailure()))
             .BuildServiceProvider();
         var dbFactory = services.GetRequiredService<IDbContextFactory<SurveillanceDbContext>>();
-        var pump = new RunPump(new AgentClientRegistry(services, config), dbFactory, new EventBroadcaster(),
-            NullLogger<RunPump>.Instance);
+        var pump = new RunPump(new AgentClientRegistry(services, config), new Surveillance.Web.Data.Repositories.CaseRepository(dbFactory),
+            new Surveillance.Web.Data.Repositories.EventRepository(dbFactory), new EventBroadcaster(), NullLogger<RunPump>.Instance);
 
         var caseId = Guid.NewGuid();
         var runId = $"bench-{caseId:N}";

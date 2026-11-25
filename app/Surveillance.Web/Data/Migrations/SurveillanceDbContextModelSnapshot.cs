@@ -188,6 +188,9 @@ namespace Surveillance.Web.Data.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
+                    b.Property<DateTime?>("EventsPurgedAt")
+                        .HasColumnType("datetime2");
+
                     b.Property<long>("LastSequence")
                         .HasColumnType("bigint");
 
@@ -212,6 +215,9 @@ namespace Surveillance.Web.Data.Migrations
                         .IsRequired()
                         .HasMaxLength(8)
                         .HasColumnType("nvarchar(8)");
+
+                    b.Property<DateTime?>("TokensCompactedAt")
+                        .HasColumnType("datetime2");
 
                     b.Property<string>("TriggerJson")
                         .IsRequired()

@@ -1,7 +1,6 @@
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Surveillance.Web.Agents;
-using Surveillance.Web.Data;
+using Surveillance.Web.Data.Repositories;
 
 namespace Surveillance.Web.Investigations;
 
@@ -15,16 +14,14 @@ public sealed record AgentChoice(string Key, string Name, string Model, string D
 /// </summary>
 public sealed class AgentSelection(
     AgentClientRegistry registry,
-    IDbContextFactory<SurveillanceDbContext> dbFactory,
+    ISettingsRepository settings,
     IOptions<AgentOptions> options)
 {
     public const string SettingKey = "agent.provider";
 
     public async Task<string> GetActiveAsync(CancellationToken ct)
     {
-        await using var db = await dbFactory.CreateDbContextAsync(ct);
-        var stored = await db.Settings.AsNoTracking()
-            .Where(s => s.Key == SettingKey).Select(s => s.Value).SingleOrDefaultAsync(ct);
+        var stored = await settings.GetAsync(SettingKey, ct);
         return stored is not null && registry.IsKnown(stored) ? stored : options.Value.Provider.ToLowerInvariant();
     }
 
@@ -39,19 +36,7 @@ public sealed class AgentSelection(
             return false;
         }
 
-        await using var db = await dbFactory.CreateDbContextAsync(ct);
-        var setting = await db.Settings.SingleOrDefaultAsync(s => s.Key == SettingKey, ct);
-        if (setting is null)
-        {
-            db.Settings.Add(new AppSetting { Key = SettingKey, Value = key.ToLowerInvariant(), UpdatedAt = DateTime.UtcNow });
-        }
-        else
-        {
-            setting.Value = key.ToLowerInvariant();
-            setting.UpdatedAt = DateTime.UtcNow;
-        }
-
-        await db.SaveChangesAsync(ct);
+        await settings.SetAsync(SettingKey, key.ToLowerInvariant(), ct);
         return true;
     }
 

@@ -82,3 +82,10 @@ pipeline MAF asli dan model tiruan:
 - `ToolApprovalRequestContent` muncul di `AgentResponseUpdate.Contents` saat streaming.
 - `ToolApprovalRequestContent` bisa diserialisasi sebagai `AIContent` dengan `AIJsonUtilities.DefaultOptions`, lalu dipakai lagi untuk `CreateResponse(...)` setelah session dideserialisasi oleh instance klien baru.
 - Function middleware tetap berjalan untuk tool yang disetujui otomatis.
+
+## Run terputus karena restart (CHANGE-003)
+
+Run yang sedang berjalan saat proses berhenti ditutup dengan `error` kode
+`run_interrupted` dan `retryable: true`, bukan lagi `internal`. Lihat
+`docs/RESTART.md`.
+Adapter menulisnya saat stream dibuka untuk run berstatus `Running` dari proses sebelumnya.

@@ -1,14 +1,13 @@
-using Microsoft.EntityFrameworkCore;
 using Surveillance.Web.Data;
 
 namespace Surveillance.Web.Investigations;
 
 /// <summary>
 /// Applies migrations in Development and re-attaches pumps to runs that were
-/// streaming when the application last stopped.
+/// streaming when the application last stopped (docs/RESTART.md).
 /// </summary>
 public sealed class StartupRecovery(
-    IDbContextFactory<SurveillanceDbContext> dbFactory,
+    DatabaseMigrator migrator,
     InvestigationService investigations,
     IHostEnvironment environment) : IHostedService
 {
@@ -16,8 +15,7 @@ public sealed class StartupRecovery(
     {
         if (environment.IsDevelopment())
         {
-            await using var db = await dbFactory.CreateDbContextAsync(ct);
-            await db.Database.MigrateAsync(ct);
+            await migrator.MigrateAsync(ct);
         }
 
         await investigations.RecoverAsync(ct);

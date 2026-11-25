@@ -49,6 +49,12 @@ public class InvestigationCase
     /// <summary>Last activity of the holder; the claim lapses after Approval:ClaimTimeoutMinutes without activity.</summary>
     public DateTime? ClaimActivityAt { get; set; }
 
+    /// <summary>Set by RetentionService once consecutive token events were merged (docs/RETENTION.md).</summary>
+    public DateTime? TokensCompactedAt { get; set; }
+
+    /// <summary>Set by RetentionService once the events and previews were deleted after the retention period.</summary>
+    public DateTime? EventsPurgedAt { get; set; }
+
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
 

@@ -98,8 +98,8 @@ Keputusan kontrak, keputusan analis tidak dimasukkan ke aliran event.
 
 | Sumber | Tabel | Contoh |
 |---|---|---|
-| Agent | `AgentEvents` (event `token` berurutan digabung menjadi satu narasi) | `approval_required`, `tool_call_finished`, `done` |
-| Analis | `ApprovalDecisions` | "Setuju untuk approval_2" oleh Marthen Rumbiak |
+| Agent | `Events` (event `token` berurutan digabung menjadi satu narasi) | `approval_required`, `tool_call_finished`, `done` |
+| Analis | `Decisions` | "Setuju untuk approval_2" oleh Marthen Rumbiak |
 | Aplikasi | `CaseAuditRecords`, ditambah keputusan `expire` | ambil, lepas, alihkan, kedaluwarsa |
 
 Kode: `AuditTimeline.cs`, `Views/Investigation/Audit.cshtml`.

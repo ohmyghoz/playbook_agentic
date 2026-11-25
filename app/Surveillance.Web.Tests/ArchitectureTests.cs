@@ -31,3 +31,25 @@ public class ArchitectureTests
         Assert.Empty(offenders);
     }
 }
+
+/// <summary>Bab 13: data access goes through Data/Repositories; nothing else touches the DbContext.</summary>
+public class RepositoryBoundaryTests
+{
+    [Fact]
+    public void Only_the_data_folder_and_startup_use_the_DbContext()
+    {
+        var web = Path.Combine(RepoPaths.Root, "app", "Surveillance.Web");
+        var offenders =
+            from file in Directory.EnumerateFiles(web, "*.cs", SearchOption.AllDirectories)
+            let relative = Path.GetRelativePath(web, file)
+            where !relative.StartsWith("Data" + Path.DirectorySeparatorChar)
+                  && !relative.StartsWith("obj" + Path.DirectorySeparatorChar)
+                  && !relative.StartsWith("bin" + Path.DirectorySeparatorChar)
+                  && relative != "Program.cs"
+            let text = File.ReadAllText(file)
+            where text.Contains("SurveillanceDbContext") || text.Contains("IDbContextFactory") || text.Contains("CreateDbContext")
+            select relative;
+
+        Assert.Empty(offenders);
+    }
+}

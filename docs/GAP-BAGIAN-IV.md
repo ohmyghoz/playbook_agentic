@@ -27,7 +27,10 @@ Diperbarui setelah Tahap 10: pola UI dipecah per partial dan modul, indikator
 berpikir, label tool, progres tahap, panel bukti, dan `/lab/patterns`.
 
 Diperbarui setelah Tahap 11: antrean approval, pengambilan dan pengalihan kasus,
-kedaluwarsa approval, garis waktu audit, `/lab/approval`, dan `docs/APPROVAL-STATES.md`. Butir yang berubah merujuk
+kedaluwarsa approval, garis waktu audit, `/lab/approval`, dan `docs/APPROVAL-STATES.md`.
+
+Diperbarui setelah Tahap 12: repository, `schema.sql` dan ERD, `run_interrupted`
+setelah restart (CHANGE-003), dan retensi data. Butir yang berubah merujuk
 ke nama file dan method, bukan nomor baris, karena nomor baris lama sudah bergeser.
 
 ## Ringkasan
@@ -37,7 +40,7 @@ ke nama file dan method, bukan nomor baris, karena nomor baris lama sudah berges
 | 10. Transport dan streaming | 8 | 0 | 0 |
 | 11. Pola UI/UX agentic | 11 | 0 | 0 |
 | 12. Human-in-the-loop | 8 | 0 | 0 |
-| 13. State dan durabilitas | 3 | 2 | 3 |
+| 13. State dan durabilitas | 6 | 0 | 2 |
 
 Kekuatan utama yang sudah ada:
 
@@ -136,11 +139,11 @@ Sejak Tahap 10, setiap pola punya satu partial view dan satu modul JavaScript
 |---|---|---|---|
 | Skenario: analis menutup browser di tengah penelusuran | **Ya** | `RunPump.cs` (membaca agent di latar belakang, tidak bergantung koneksi browser), putar ulang dari DB saat dibuka lagi | – |
 | Pembagian peran: SQL Server = sumber kebenaran, checkpoint = hanya untuk melanjutkan | **Ya** | `CLAUDE.md` (Arsitektur, Catatan keputusan), `RunPump.PersistAsync`; state framework: MAF di `App_Data/maf-runs`, LangGraph `checkpoints.db`, ADK `sessions.db` (di luar `app/`) | – |
-| Skema SQL Server: kasus, riwayat event, keputusan approval | **Ya** | `Entities.cs`, `SurveillanceDbContext.cs` (indeks unik `(RunId, Sequence)`, konversi UTC), `Data/Migrations/20261124150620_Initial.cs` | Skrip DDL dalam bentuk `.sql` belum ada; bisa dibuat dengan `dotnet ef migrations script`. ERD belum ada. |
-| Model dan repository C# | **Sebagian** | Entitas di `Entities.cs`; akses data langsung lewat `IDbContextFactory` di `InvestigationService` dan `RunPump` | Belum ada pola repository (misalnya `ICaseRepository`, `IEventRepository`). Kalau buku ingin menampilkan repository, perlu dipisahkan dari service. |
+| Skema SQL Server: kasus, riwayat event, keputusan approval | **Ya** | `Entities.cs`, `SurveillanceDbContext.cs`, `Data/Migrations/`; `docs/schema.sql` (dibuat dengan `dotnet ef migrations script --idempotent`); `docs/ERD.md` (Mermaid) | – |
+| Model dan repository C# | **Ya** | `Data/Repositories/` (`ICaseRepository`, `IEventRepository`, `IApprovalRepository`, `ISettingsRepository`, implementasi EF di `EfRepositories.cs`); dipakai `InvestigationService`, `RunPump`, `CaseClaims`, `ApprovalExpiryService`, `AuditTimeline`, `AgentSelection`, `RetentionService` | `RepositoryBoundaryTests` memastikan tidak ada `DbContext` di luar folder `Data` dan `Program.cs`. |
 | Use case 2: daftar job, status, notifikasi selesai, membuka kembali hasil | **Belum** | – (Tahap 6b) | Belum ada spesifikasi `asd-pattern-detection.md`, background service job, halaman daftar job, halaman detail per worker, atau notifikasi. Progres per worker butuh 🔶 `agentName`. |
-| Resume setelah restart | **Sebagian** | `StartupRecovery.cs`, `InvestigationService.RecoverAsync` (`:225`) | Run yang menunggu approval tetap bisa dilanjutkan untuk MAF, LangGraph, dan ADK. Run yang sedang streaming saat aplikasi atau service mati ditutup dengan `error internal`, tidak dilanjutkan. Agent fake kehilangan semua run saat restart. Pembedaan ini perlu dijelaskan sebagai keputusan desain di buku. |
-| Retensi dan pembersihan | **Belum** | – | Tidak ada kebijakan umur data maupun pembersihan untuk tabel event, file `App_Data/maf-runs`, atau database service Python (`service.db`, `checkpoints.db`, `sessions.db`). |
+| Resume setelah restart | **Ya** | `StartupRecovery.cs`, `InvestigationService.RecoverAsync`, `RunPump` (`afterRestart`), kode error `run_interrupted` (`contracts/CHANGE-003-run-interrupted.md`), `docs/RESTART.md` (tabel per solusi dan alasan desain) | Run yang menunggu approval dilanjutkan. Run yang terputus di tengah langkah ditutup dengan `run_interrupted` yang bisa diulang, dan halaman menawarkan mulai ulang. |
+| Retensi dan pembersihan | **Ya** | `RetentionService.cs` (pratinjau 30 hari, penggabungan token setelah run selesai, event 90 hari, file `maf-runs` 30 hari), `docs/RETENTION.md` (termasuk pembersihan database service Python) | Pembersihan database service Python didokumentasikan, belum dijadwalkan otomatis. |
 | Demo 13-1: daftar job dengan status berjalan | **Belum** | – | Bergantung pada use case 2. |
 
 ## Butir yang butuh perubahan kontrak event 🔶

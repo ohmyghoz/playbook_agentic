@@ -36,6 +36,13 @@ builder.Services.AddDbContextFactory<SurveillanceDbContext>(options =>
         // Azure SQL serverless databases take a while to resume from auto-pause.
         sql => sql.EnableRetryOnFailure(maxRetryCount: 6, maxRetryDelay: TimeSpan.FromSeconds(10), errorNumbersToAdd: null)));
 
+// Data access goes through repositories only (Data/Repositories; checked by ArchitectureTests).
+builder.Services.AddSingleton<Surveillance.Web.Data.Repositories.ICaseRepository, Surveillance.Web.Data.Repositories.CaseRepository>();
+builder.Services.AddSingleton<Surveillance.Web.Data.Repositories.IEventRepository, Surveillance.Web.Data.Repositories.EventRepository>();
+builder.Services.AddSingleton<Surveillance.Web.Data.Repositories.IApprovalRepository, Surveillance.Web.Data.Repositories.ApprovalRepository>();
+builder.Services.AddSingleton<Surveillance.Web.Data.Repositories.ISettingsRepository, Surveillance.Web.Data.Repositories.SettingsRepository>();
+builder.Services.AddSingleton<DatabaseMigrator>();
+
 builder.Services.AddAgentClients(builder.Configuration);
 builder.Services.AddSingleton<AgentSelection>();
 builder.Services.AddSingleton<EventBroadcaster>();
@@ -49,6 +56,11 @@ builder.Services.AddSingleton<CaseClaims>();
 builder.Services.AddSingleton<AuditTimeline>();
 builder.Services.AddSingleton<ApprovalExpiryService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<ApprovalExpiryService>());
+
+// Retention: old previews and events, token compaction, stale MAF run files (docs/RETENTION.md).
+builder.Services.Configure<RetentionOptions>(builder.Configuration.GetSection("Retention"));
+builder.Services.AddSingleton<RetentionService>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<RetentionService>());
 
 // Event transports to the browser: SSE (controller), polling (events.json) and SignalR (hub).
 builder.Services.Configure<TransportOptions>(builder.Configuration.GetSection("Transport"));

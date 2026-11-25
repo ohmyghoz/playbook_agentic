@@ -111,8 +111,9 @@ public sealed class MafAgentClient : IAgentClient
                     return;
                 case RunPhase.Running:
                     // A previous stream was interrupted (process stopped mid-run); the session is not consistent.
-                    emit.CloseOpenCalls("internal", "Run terputus.");
-                    emit.Error(AgentErrorCode.Internal, "Investigasi terputus di tengah jalan. Mulai investigasi baru untuk mencoba lagi.", true);
+                    emit.CloseOpenCalls("run_interrupted", "Run terputus.");
+                    emit.Error(AgentErrorCode.RunInterrupted,
+                        "Investigasi terputus karena aplikasi dinyalakan ulang saat agent sedang bekerja. Data yang sudah masuk tetap tersimpan. Pilih Mulai ulang dengan data yang sama untuk menjalankannya lagi.", true);
                     return;
             }
 

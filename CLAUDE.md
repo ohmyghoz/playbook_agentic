@@ -400,7 +400,7 @@ Selesai jika: contract test kedua use case lulus atau setiap kegagalan dijelaska
 - [x] Tahap 9: transport (Bab 10)
 - [x] Tahap 10: pola UI (Bab 11)
 - [x] Tahap 11: approval (Bab 12)
-- [ ] Tahap 12: durabilitas (Bab 13)
+- [x] Tahap 12: durabilitas (Bab 13)
 - [ ] Tahap 13: use case 2 di aplikasi, dengan agent tiruan
 - [ ] Tahap 14: use case 2 di tiga solusi
 - [ ] Tahap 15: contract test use case 2 dan penutupan
@@ -467,4 +467,7 @@ Tambahkan satu baris per keputusan: tanggal, keputusan, alasan singkat.
 - 2026-11-25: Tahap 11: status baru `Expired` (dari `AwaitingApproval`), supaya approval yang lewat batas berakhir dengan status yang jelas. `ApprovalExpiryService` memakai update bersyarat pada `AwaitingSince` yang dibaca, mencatat keputusan `expire` oleh "Sistem", lalu menghentikan run lewat jalur tombol Hentikan; `done(cancelled)` dari agent disimpan tanpa mengubah status. Halaman membedakan berhenti dan kedaluwarsa dengan menanyakan status kasus ke `GET /investigations/{id}/claim` setelah `done(cancelled)`.
 - 2026-11-25: Tahap 11: pegangan kasus disimpan di kolom kasus (`ClaimedBy`, `ClaimedByUser`, `ClaimActivityAt`), dibandingkan dengan nama tampilan (sama dengan `DecidedBy`). Pegangan aktif menolak keputusan analis lain; kasus tanpa pegangan tetap bisa diputuskan supaya keputusan tidak hilang. Keputusan dan kedaluwarsa mengosongkan pegangan, sehingga draf revisi harus diambil lagi. Tindakan ambil, lepas, alihkan, dan kedaluwarsa tercatat di tabel `CaseAuditRecords`.
 - 2026-11-25: Tahap 11: batas waktu approval dihitung dari `AwaitingSince`, yang diisi `RunPump` setiap kali draf mulai menunggu. Kasus dari `/lab/approval` memakai `ApprovalTimeoutMinutes = 2`.
+- 2026-11-25: Tahap 12: repository `ICaseRepository`, `IEventRepository`, `IApprovalRepository`, ditambah `ISettingsRepository` untuk halaman Setting dan `DatabaseMigrator`, semuanya di `Data/`. Query bersyarat dan transaksi pindah apa adanya. `RepositoryBoundaryTests` menjaga agar tidak ada `DbContext` di luar `Data/` dan `Program.cs`.
+- 2026-11-25: Tahap 12c: kode error baru `run_interrupted` di `events.schema.json` (`contracts/CHANGE-003-run-interrupted.md`), menafsirkan permintaan Tahap 12c "kode error yang jelas dan bisa diulang" sebagai persetujuan perubahan kontrak ini. Dipakai aplikasi (`RunPump` dengan `afterRestart`), MAF, LangGraph, dan ADK.
+- 2026-11-25: Tahap 12d: penggabungan token menyisakan lompatan `sequence` pada kasus yang sudah selesai. Ini diterima karena tidak ada klien yang menyambung kembali ke run yang sudah selesai, dan putar ulang membuang berdasarkan `sequence`. Penghapusan setelah 90 hari hanya menyentuh event dan pratinjau; kasus, keputusan, dan audit tetap ada. Pembersihan database service Python didokumentasikan di `docs/RETENTION.md` tanpa jadwal otomatis.
 - 2026-11-24: Catatan keamanan: server Azure SQL punya aturan firewall `AllowAll-Experiment` (0.0.0.0–255.255.255.255). Belum diubah; sebaiknya dihapus dan diganti aturan per IP.

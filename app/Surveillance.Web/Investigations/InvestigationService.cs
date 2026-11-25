@@ -1,9 +1,10 @@
 using System.Runtime.CompilerServices;
 using System.Text.Json;
-using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using Surveillance.Agents.Abstractions;
 using Surveillance.Web.Agents;
 using Surveillance.Web.Data;
+using Surveillance.Web.Data.Repositories;
 
 namespace Surveillance.Web.Investigations;
 
@@ -37,15 +38,18 @@ public sealed record DecisionOutcome(DecisionResult Result, string? DecidedBy = 
 
 /// <summary>
 /// Everything controllers need for UMA investigations. Knows only
-/// <see cref="IAgentClient"/>, never a concrete agent framework.
+/// <see cref="IAgentClient"/>, never a concrete agent framework, and reaches the
+/// database only through the repositories in Data/Repositories.
 /// </summary>
 public sealed class InvestigationService(
     AgentClientRegistry agents,
     AgentSelection selection,
-    IDbContextFactory<SurveillanceDbContext> dbFactory,
+    ICaseRepository cases,
+    IEventRepository events,
+    IApprovalRepository approvals,
     RunPump pump,
     EventBroadcaster broadcaster,
-    Microsoft.Extensions.Options.IOptions<ApprovalOptions> approval,
+    IOptions<ApprovalOptions> approval,
     ILogger<InvestigationService> logger)
 {
     public async Task<Guid> StartAsync(StartInvestigation input, CancellationToken ct)
@@ -66,12 +70,7 @@ public sealed class InvestigationService(
             CreatedAt = now,
             UpdatedAt = now,
         };
-
-        await using (var db = await dbFactory.CreateDbContextAsync(ct))
-        {
-            db.Cases.Add(@case);
-            await db.SaveChangesAsync(ct);
-        }
+        await cases.AddAsync(@case, ct);
 
         var request = new InvestigationRequest(@case.Id.ToString(), @case.Symbol, @case.AnomalyDate, trigger, @case.Notes);
         string runId;
@@ -82,7 +81,7 @@ public sealed class InvestigationService(
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             logger.LogError(ex, "Agent {Provider} failed to start case {CaseId}", @case.Provider, @case.Id);
-            await SetRunIdAsync(@case.Id, $"failed-{@case.Id:N}");
+            await cases.SetRunIdAsync(@case.Id, $"failed-{@case.Id:N}", CancellationToken.None);
             // InvalidOperationException: the chosen solution cannot be created (missing API key or URL).
             var (code, message) = ex is InvalidOperationException
                 ? (AgentErrorCode.Internal, "Solusi agent yang dipilih belum siap. Periksa halaman Setting, lalu coba lagi.")
@@ -91,7 +90,7 @@ public sealed class InvestigationService(
             return @case.Id;
         }
 
-        await SetRunIdAsync(@case.Id, runId);
+        await cases.SetRunIdAsync(@case.Id, runId, CancellationToken.None);
         _ = pump.Start(@case.Id, runId, @case.Provider);
         return @case.Id;
     }
@@ -108,8 +107,7 @@ public sealed class InvestigationService(
     public async Task<DecisionOutcome> DecideAsync(Guid caseId, string approvalId, Decision decision,
         string? comment, string decidedBy, CancellationToken ct)
     {
-        await using var db = await dbFactory.CreateDbContextAsync(ct);
-        var @case = await db.Cases.AsNoTracking().SingleOrDefaultAsync(c => c.Id == caseId, ct);
+        var @case = await cases.GetAsync(caseId, ct);
         if (@case is null)
         {
             return new(DecisionResult.CaseNotFound);
@@ -117,7 +115,7 @@ public sealed class InvestigationService(
 
         if (@case.Status != CaseStatus.AwaitingApproval || @case.RunId is null)
         {
-            return await WinnerOfAsync(db, caseId, approvalId, ct) is { } winner
+            return await approvals.WinnerOfAsync(caseId, approvalId, ct) is { } winner
                 ? new(DecisionResult.AlreadyDecided, winner)
                 : new(DecisionResult.NotAwaitingApproval);
         }
@@ -127,73 +125,42 @@ public sealed class InvestigationService(
             return new(DecisionResult.CommentRequired);
         }
 
-        var latest = await db.Events
-            .Where(e => e.CaseId == caseId && e.Type == "approval_required")
-            .OrderByDescending(e => e.Sequence)
-            .Select(e => e.PayloadJson)
-            .FirstAsync(ct);
-        var pending = JsonSerializer.Deserialize<ApprovalRequiredPayload>(latest, AgentJson.Options)!;
+        var latest = await events.LatestApprovalPayloadAsync(caseId, ct);
+        var pending = JsonSerializer.Deserialize<ApprovalRequiredPayload>(latest!, AgentJson.Options)!;
         if (pending.ApprovalId != approvalId)
         {
             return new(DecisionResult.StaleApproval);
         }
 
         var normalizedComment = string.IsNullOrWhiteSpace(comment) ? null : comment.Trim();
-        var running = CaseStateMachine.Move(CaseStatus.AwaitingApproval, CaseStatus.Running);
         var who = decidedBy.Trim();
-        var claimCutoff = approval.Value.ClaimCutoff(DateTime.UtcNow);
-
-        // A user transaction must run inside the execution strategy when retry on failure is on.
-        var claimed = await db.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
+        var record = new ApprovalDecisionRecord
         {
-            db.ChangeTracker.Clear();
-            await using var tx = await db.Database.BeginTransactionAsync(ct);
-            var changed = await db.Cases
-                .Where(c => c.Id == caseId && c.Status == CaseStatus.AwaitingApproval
-                            && (c.ClaimedBy == null || c.ClaimedBy == who || c.ClaimActivityAt < claimCutoff))
-                .ExecuteUpdateAsync(s => s
-                    .SetProperty(c => c.Status, running)
-                    .SetProperty(c => c.AwaitingSince, (DateTime?)null)
-                    .SetProperty(c => c.ClaimedBy, (string?)null)
-                    .SetProperty(c => c.ClaimedByUser, (string?)null)
-                    .SetProperty(c => c.ClaimActivityAt, (DateTime?)null)
-                    .SetProperty(c => c.UpdatedAt, DateTime.UtcNow), ct);
-            if (changed == 0)
-            {
-                return false; // someone else claimed it between our read and this update
-            }
-
-            db.Decisions.Add(new ApprovalDecisionRecord
-            {
-                CaseId = caseId,
-                ApprovalId = approvalId,
-                Decision = EventMapping.EnumName(decision),
-                Comment = normalizedComment,
-                DecidedBy = decidedBy.Trim(),
-                DecidedAt = DateTime.UtcNow,
-            });
-            await db.SaveChangesAsync(ct);
-            await tx.CommitAsync(ct);
-            return true;
-        });
-
-        if (!claimed)
+            CaseId = caseId,
+            ApprovalId = approvalId,
+            Decision = EventMapping.EnumName(decision),
+            Comment = normalizedComment,
+            DecidedBy = who,
+            DecidedAt = DateTime.UtcNow,
+        };
+        var running = CaseStateMachine.Move(CaseStatus.AwaitingApproval, CaseStatus.Running);
+        if (!await approvals.TryDecideAsync(record, running, approval.Value.ClaimCutoff(DateTime.UtcNow), ct))
         {
-            var now = await db.Cases.AsNoTracking().SingleAsync(c => c.Id == caseId, ct);
-            if (now.Status == CaseStatus.AwaitingApproval && approval.Value.ClaimIsActive(now, DateTime.UtcNow) && now.ClaimedBy != who)
+            var now = await cases.GetAsync(caseId, ct);
+            if (now is { Status: CaseStatus.AwaitingApproval } && approval.Value.ClaimIsActive(now, DateTime.UtcNow) && now.ClaimedBy != who)
             {
                 return new(DecisionResult.ClaimedByOther, now.ClaimedBy);
             }
 
             logger.LogInformation("Decision on case {CaseId} by {DecidedBy} lost the race", caseId, decidedBy);
-            return new(DecisionResult.AlreadyDecided, await WinnerOfAsync(db, caseId, approvalId, ct));
+            return new(DecisionResult.AlreadyDecided, await approvals.WinnerOfAsync(caseId, approvalId, ct));
         }
 
         try
         {
             // The case keeps the solution that started it, whatever the settings page says now.
             await agents.Get(@case.Provider).ResumeAsync(@case.RunId,
-                new ApprovalDecision(approvalId, decision, decidedBy.Trim(), normalizedComment), ct);
+                new ApprovalDecision(approvalId, decision, who, normalizedComment), ct);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -207,64 +174,28 @@ public sealed class InvestigationService(
         return new(DecisionResult.Accepted);
     }
 
-    private static Task<string?> WinnerOfAsync(SurveillanceDbContext db, Guid caseId, string approvalId, CancellationToken ct) =>
-        db.Decisions.AsNoTracking()
-            .Where(d => d.CaseId == caseId && d.ApprovalId == approvalId)
-            .Select(d => d.DecidedBy)
-            .FirstOrDefaultAsync(ct);
-
     public async Task StopAsync(Guid caseId, CancellationToken ct)
     {
-        await using var db = await dbFactory.CreateDbContextAsync(ct);
-        var @case = await db.Cases.SingleOrDefaultAsync(c => c.Id == caseId, ct);
+        var @case = await cases.GetAsync(caseId, ct);
         if (@case is { RunId: not null } && !@case.Status.IsTerminal())
         {
             _ = pump.Stop(caseId, @case.RunId, @case.Provider);
         }
     }
 
-    public async Task<InvestigationCase?> GetCaseAsync(Guid caseId, CancellationToken ct)
-    {
-        await using var db = await dbFactory.CreateDbContextAsync(ct);
-        return await db.Cases.AsNoTracking()
-            .Include(c => c.Decisions.OrderBy(d => d.DecidedAt))
-            .SingleOrDefaultAsync(c => c.Id == caseId, ct);
-    }
+    public Task<InvestigationCase?> GetCaseAsync(Guid caseId, CancellationToken ct) => cases.GetAsync(caseId, ct);
 
     /// <summary>Cases waiting for an analyst, the longest waiting first.</summary>
-    public async Task<List<InvestigationCase>> ListAwaitingApprovalAsync(CancellationToken ct)
-    {
-        await using var db = await dbFactory.CreateDbContextAsync(ct);
-        return await db.Cases.AsNoTracking()
-            .Where(c => c.Status == CaseStatus.AwaitingApproval && c.AwaitingSince != null)
-            .OrderBy(c => c.AwaitingSince)
-            .ToListAsync(ct);
-    }
+    public Task<List<InvestigationCase>> ListAwaitingApprovalAsync(CancellationToken ct) => cases.ListAwaitingApprovalAsync(ct);
 
-    public async Task<List<InvestigationCase>> ListCasesAsync(CancellationToken ct)
-    {
-        await using var db = await dbFactory.CreateDbContextAsync(ct);
-        return await db.Cases.AsNoTracking().OrderByDescending(c => c.CreatedAt).Take(100).ToListAsync(ct);
-    }
+    public Task<List<InvestigationCase>> ListCasesAsync(CancellationToken ct) => cases.ListRecentAsync(100, ct);
 
     /// <summary>The raw output of one tool call, for the evidence view. Null when the agent sent none.</summary>
-    public async Task<ToolResultPreview?> GetPreviewAsync(Guid caseId, string toolCallId, CancellationToken ct)
-    {
-        await using var db = await dbFactory.CreateDbContextAsync(ct);
-        return await db.Previews.AsNoTracking()
-            .Where(p => p.CaseId == caseId && p.ToolCallId == toolCallId)
-            .OrderByDescending(p => p.Id)
-            .FirstOrDefaultAsync(ct);
-    }
+    public Task<ToolResultPreview?> GetPreviewAsync(Guid caseId, string toolCallId, CancellationToken ct) =>
+        events.GetPreviewAsync(caseId, toolCallId, ct);
 
-    public async Task<List<AgentEventRecord>> GetEventsAsync(Guid caseId, long after, CancellationToken ct)
-    {
-        await using var db = await dbFactory.CreateDbContextAsync(ct);
-        return await db.Events.AsNoTracking()
-            .Where(e => e.CaseId == caseId && e.Sequence > after)
-            .OrderBy(e => e.Sequence)
-            .ToListAsync(ct);
-    }
+    public Task<List<AgentEventRecord>> GetEventsAsync(Guid caseId, long after, CancellationToken ct) =>
+        events.GetAfterAsync(caseId, after, ct);
 
     /// <summary>
     /// Replays stored events after <paramref name="after"/>, then follows live
@@ -309,27 +240,15 @@ public sealed class InvestigationService(
         }
     }
 
-    /// <summary>Re-attaches pumps to runs that were streaming when the application stopped.</summary>
+    /// <summary>
+    /// Re-attaches pumps to runs that were streaming when the application stopped. A run the
+    /// agent no longer knows ends with run_interrupted, which the analyst can retry (docs/RESTART.md).
+    /// </summary>
     public async Task RecoverAsync(CancellationToken ct)
     {
-        await using var db = await dbFactory.CreateDbContextAsync(ct);
-        var active = await db.Cases
-            .Where(c => c.RunId != null && (c.Status == CaseStatus.Running || c.Status == CaseStatus.Starting))
-            .Select(c => new { c.Id, c.RunId, c.Provider })
-            .ToListAsync(ct);
-        foreach (var c in active)
+        foreach (var run in await cases.ListActiveRunsAsync(ct))
         {
-            _ = pump.Start(c.Id, c.RunId!, c.Provider);
+            _ = pump.Start(run.CaseId, run.RunId, run.Provider, afterRestart: true);
         }
-    }
-
-    private async Task SetRunIdAsync(Guid caseId, string runId)
-    {
-        await using var db = await dbFactory.CreateDbContextAsync();
-        var @case = await db.Cases.SingleAsync(c => c.Id == caseId);
-        @case.RunId = runId;
-        @case.Status = CaseStateMachine.Move(@case.Status, CaseStatus.Running);
-        @case.UpdatedAt = DateTime.UtcNow;
-        await db.SaveChangesAsync();
     }
 }

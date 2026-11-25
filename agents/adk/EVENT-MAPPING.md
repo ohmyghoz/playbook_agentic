@@ -70,3 +70,10 @@ tool, sama persis dengan ketiga adapter lain. Detail dan alasannya ada di
 
 - Halaman situs ADK tentang Tool Confirmation menyebut `DatabaseSessionService` tidak didukung, sedangkan panduan di repo `adk-python` (lebih baru) menyebut keputusan bisa datang dari proses lain selama session persisten. `test_paused_run_survives_a_service_restart` memastikan jeda approval, revisi, lalu persetujuan berjalan dengan `Runner` dan `DatabaseSessionService` baru.
 - `abort_signal` (sejak 2.11) hanya didokumentasikan di repo, belum di situs. `test_cancel_during_model_call_ends_cancelled` memastikan pembatalan menutup run dengan `done(cancelled)`.
+
+## Run terputus karena restart (CHANGE-003)
+
+Run yang sedang berjalan saat proses berhenti ditutup dengan `error` kode
+`run_interrupted` dan `retryable: true`, bukan lagi `internal`. Lihat
+`docs/RESTART.md`.
+`RunManager.recover` menulisnya untuk run berstatus `running` saat service start.

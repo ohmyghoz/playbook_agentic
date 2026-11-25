@@ -62,6 +62,9 @@ public enum AgentErrorCode
     ModelError,
     McpUnavailable,
     InvalidInput,
+
+    /// <summary>The run was lost because the application or agent service restarted mid-run (CHANGE-003).</summary>
+    RunInterrupted,
     Internal,
 }
 
