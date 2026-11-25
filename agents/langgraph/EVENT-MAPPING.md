@@ -84,3 +84,39 @@ Run yang sedang berjalan saat proses berhenti ditutup dengan `error` kode
 `run_interrupted` dan `retryable: true`, bukan lagi `internal`. Lihat
 `docs/RESTART.md`.
 `RunManager.recover` menulisnya untuk run berstatus `running` saat service start.
+
+## Use case 2: deteksi pola (Tahap 14, CHANGE-002)
+
+Run dengan `useCase: pattern_detection` memakai graph kedua,
+`build_pattern_graph` (`app/pattern_graph.py`), dengan checkpointer yang sama:
+
+```text
+START -> workers -> report_agent -> review -> report_agent | END   (interrupt untuk analis)
+                                 -> nudge  -> report_agent
+                                 -> no_report -> END
+```
+
+| Bagian | LangGraph |
+|---|---|
+| Orchestrator | Node `workers` menjalankan `PatternOrchestrator` (`app/pattern_orchestrator.py`, kode biasa; salinan sama di ADK, padanan `PatternOrchestrator.cs` di MAF). Paling banyak 3 worker sekaligus (`asyncio.Semaphore`). |
+| Worker | Satu `StateGraph` kecil per worker (`worker_agent` ↔ `worker_tools`, berakhir di `finish`). Dikompilasi tanpa checkpointer dan dipanggil dengan `ainvoke` dari node `workers`. Tool hanya yang sesuai perannya, ditambah `finish_worker`. |
+| Batas | Langkah per worker dan `JobBudget` dicek di `worker_tools`. Panggilan ke tool yang tidak ada juga dihitung sebagai langkah. |
+| Penyusun laporan | Node `report_agent` (model dengan `submit_report` saja) dan `review` dengan `interrupt()`. Jeda dan lanjut sama seperti `submit_memo`. |
+
+| Event | Asal |
+|---|---|
+| `worker_started`, `worker_finished` | Stream `custom` (`kind` dengan nama yang sama) dari node `workers` |
+| `tool_call_*` worker | Stream `custom` dengan field `agent`. `RunInfo.call_agents` menyimpan agent setiap tool call. |
+| `token` | Narasi orchestrator (`kind: narration`) dan teks node `report_agent` dari stream `messages`. Teks `worker_agent` dibuang. |
+| `agentName` | `RunManager._emit`: id worker untuk event worker, `orchestrator` untuk event lain. Tahap UMA (`step_started`) tidak dipakai. |
+
+**Ketahanan.**
+- Jeda approval laporan bertahan setelah service dinyalakan ulang, karena checkpointer menyimpan graph setelah node `workers`.
+- Bila service mati saat worker berjalan, `recover` menutup worker yang terbuka, lalu run berakhir dengan `run_interrupted`.
+
+**Uji live, 25 November 2026, 3 kandidat:**
+
+| Model | Hasil |
+|---|---|
+| `qwen3-30b-a3b-instruct-2507` | Jalur penuh terlewati: worker saham, worker broker, klaster, lalu worker kepemilikan. Masalahnya: model memanggil tool yang tidak ada (`worker_broker`) berulang kali dan menulis nama broker, bukan kodenya. Kedua hal itu kini ditangani di kode dan diperjelas di instruksi ASD. Run berakhir `model_error` karena koneksi ke OpenRouter putus (WinError 1236, jaringan lokal). |
+| `qwen3.8-27b` (model aktif) | Ketiga worker saham selesai `ok` tanpa panggilan tool yang salah. Laporan diterima setelah satu perbaikan format, lalu disetujui (30 panggilan data). Dengan batas job 4 tool call, ketiga worker `limit_reached` dan laporan parsial mencatat batasnya. |

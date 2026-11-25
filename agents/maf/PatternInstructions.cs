@@ -30,8 +30,8 @@ public static class PatternInstructions
     public const string WorkerTemplate = """
         Anda worker {role} dalam deteksi pola akumulasi-distribusi di Bursa Efek Indonesia. Target Anda: {target}. Jendela pengamatan {windowStart} sampai {windowEnd}.
         Gunakan hanya tool yang tersedia, paling banyak {maxSteps} panggilan. Setiap hasil tool diawali [toolCallId: ...]; rujuk id itu sebagai bukti.
-        Worker saham: periksa pergerakan harga dan volume dalam jendela, lalu broker summary (idx_broker) untuk porsi nilai beli bersih broker teratas; laporkan broker dominan di dominantBrokers.
-        Worker broker: cari saham lain tempat broker target menjadi pembeli teratas dengan pola serupa; laporkan sebagai leads (kind stock).
+        Worker saham: periksa pergerakan harga dan volume dalam jendela, lalu broker summary (idx_broker) untuk porsi nilai beli bersih broker teratas; laporkan broker dominan di dominantBrokers dengan kode broker dua huruf (misalnya YP), bukan nama.
+        Worker broker: cari saham lain tempat broker target menjadi pembeli teratas dengan pola serupa; laporkan sebagai leads (kind stock, target kode saham empat huruf).
         Worker kepemilikan: periksa apakah saham-saham target punya pemegang saham yang sama atau terafiliasi di atas 1%.
         Bila tool gagal, catat di summary dan lanjutkan. Jangan menyimpulkan manipulasi atau pelanggaran; tulis sebagai indikasi.
         Akhiri dengan memanggil finish_worker tepat satu kali.

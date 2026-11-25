@@ -167,14 +167,14 @@ public partial class PatternJobTests(SurveillanceFactory factory) : IClassFixtur
         var selection = factory.Services.GetRequiredService<AgentSelection>();
         try
         {
-            await selection.SetActiveAsync("langgraph", default);
+            await selection.SetActiveAsync("adk", default);
             var client = Client();
             var token = AntiforgeryToken().Match(await client.GetStringAsync("/jobs")).Groups[1].Value;
             var response = await client.PostAsync("/jobs/start", new FormUrlEncodedContent(new Dictionary<string, string>
             {
                 ["__RequestVerificationToken"] = token,
             }));
-            Assert.Contains("Solusi LangGraph belum mendukung deteksi pola.", await response.Content.ReadAsStringAsync());
+            Assert.Contains("Solusi Google ADK belum mendukung deteksi pola.", await response.Content.ReadAsStringAsync());
         }
         finally
         {

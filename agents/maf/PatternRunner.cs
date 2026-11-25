@@ -62,10 +62,13 @@ internal sealed class PatternRunner(MafAgentOptions options, IChatClient chatCli
         var finish = AIFunctionFactory.Create(
             (string summary, List<BrokerShare>? dominantBrokers, List<Lead>? leads, List<Statement>? findings) =>
             {
-                // Models sometimes fill leads loosely; only complete ones reach the orchestrator.
-                var clean = leads?.Where(l => !string.IsNullOrWhiteSpace(l.Target))
-                    .Select(l => l with { Target = l.Target.Trim().ToUpperInvariant() }).ToList();
-                report = new WorkerReport(summary, dominantBrokers?.Where(b => !string.IsNullOrWhiteSpace(b.Broker)).ToList(), clean, findings);
+                // Models sometimes give broker names or loose targets; only exchange codes reach the orchestrator.
+                var clean = leads?.Select(l => l with { Target = (l.Target ?? "").Trim().ToUpperInvariant() })
+                    .Where(l => System.Text.RegularExpressions.Regex.IsMatch(l.Target, l.Kind == LeadKind.Stock ? "^[A-Z]{4}$" : "^[A-Z0-9]{2}$"))
+                    .ToList();
+                var brokers = dominantBrokers?.Select(b => b with { Broker = (b.Broker ?? "").Trim().ToUpperInvariant() })
+                    .Where(b => System.Text.RegularExpressions.Regex.IsMatch(b.Broker, "^[A-Z0-9]{2}$")).ToList();
+                report = new WorkerReport(summary, brokers, clean, findings);
                 return "Temuan diterima.";
             },
             PatternInstructions.FinishWorker,

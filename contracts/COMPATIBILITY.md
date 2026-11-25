@@ -82,7 +82,7 @@ Sejak Tahap 8, alur penuh juga memeriksa bahwa tahap `assess` muncul dan setiap
 hasil MCP membawa `resultPreview`; semua pemeriksaan skema dan urutan tahap
 berlaku juga untuk run live.
 
-| Skenario | MAF (gpt-5-mini) | LangGraph (qwen3-30b-a3b-instruct-2507) | ADK (gemini-3.8-flash) |
+| Skenario | MAF (gpt-5-mini) | LangGraph (qwen3-30b-a3b-instruct-2507; diulang dengan qwen3.8-27b) | ADK (gemini-3.8-flash) |
 |---|---|---|---|
 | Alur penuh sampai approval, lalu disetujui | ✅ | ✅ | ✅ |
 | Tolak | ✅ | ✅ (gagal 1 dari 4 uji, lihat di bawah) | ✅ |
@@ -90,6 +90,9 @@ berlaku juga untuk run live.
 | Batas langkah 3 tidak pernah terlampaui | ✅ | ✅ | ✅ |
 
 Durasi satu test live 20 detik sampai 1,5 menit, tergantung model.
+
+Pada 25 November 2026 model LangGraph diganti ke `qwen/qwen3.8-27b`. Keempat test live
+LangGraph diulang dan lulus 4 dari 4 (3 menit 39 detik).
 
 Skenario revisi, revisi ketiga, `approvalId` usang, dan stream ulang hanya diuji
 offline. Pada model sungguhan, alur revisi diuji manual dari browser saat Tahap

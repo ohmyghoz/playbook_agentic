@@ -29,6 +29,12 @@ class ToolProvider:
         self._settings = settings
         self._stack: contextlib.AsyncExitStack | None = None
         self._tools: list[Any] | None = None
+        self._all: list[Any] | None = None
+
+    async def get_all(self) -> list[Any]:
+        """Every tool on the server, for pattern-detection workers; each worker binds only its role's tools."""
+        await self.get()
+        return self._all or []
 
     async def get(self) -> list[Any]:
         if self._tools is not None:
@@ -53,6 +59,7 @@ class ToolProvider:
             raise McpUnavailable(f"MCP server at {self._settings.mcp_endpoint} is unavailable.") from ex
 
         self._stack = stack
+        self._all = list(tools)
         self._tools = [t for t in tools if t.name in ALLOWED_MCP_TOOLS]
         return self._tools
 
@@ -68,6 +75,9 @@ class CannedToolProvider:
         self._tools = tools
 
     async def get(self) -> list[Any]:
+        return self._tools
+
+    async def get_all(self) -> list[Any]:
         return self._tools
 
     async def close(self) -> None:
@@ -91,6 +101,7 @@ async def _production_manager() -> AsyncIterator[RunManager]:
     from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
     from .graph import build_graph
+    from .pattern_graph import build_pattern_graph
 
     settings = Settings()
     settings.data_dir.mkdir(parents=True, exist_ok=True)
@@ -116,7 +127,12 @@ async def _production_manager() -> AsyncIterator[RunManager]:
                 compiled["graph"] = build_graph(model, await tools.get(), settings).compile(checkpointer=saver)
             return compiled["graph"]
 
-        manager = RunManager(graph_factory, store, settings)
+        async def pattern_graph_factory() -> Any:
+            if "pattern" not in compiled:
+                compiled["pattern"] = build_pattern_graph(model, await tools.get_all(), settings).compile(checkpointer=saver)
+            return compiled["pattern"]
+
+        manager = RunManager(graph_factory, store, settings, pattern_graph_factory)
         await manager.recover()
         try:
             yield manager

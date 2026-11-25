@@ -47,7 +47,7 @@ public sealed class AgentClientRegistry(IServiceProvider services, IConfiguratio
         new(Maf, "Microsoft Agent Framework", configuration["Agent:Maf:Model"] ?? "gpt-5-mini",
             "Berjalan di dalam aplikasi; model OpenAI lewat platform.openai.", SupportsPatternDetection: true),
         new(LangGraph, "LangGraph", configuration["Agent:LangGraph:ModelLabel"] ?? "-",
-            "Service Python terpisah; model diatur di agents/langgraph/.env."),
+            "Service Python terpisah; model diatur di agents/langgraph/.env.", SupportsPatternDetection: true),
         new(Adk, "Google ADK", configuration["Agent:Adk:ModelLabel"] ?? "-",
             "Service Python terpisah; model diatur di agents/adk/.env."),
     ];
