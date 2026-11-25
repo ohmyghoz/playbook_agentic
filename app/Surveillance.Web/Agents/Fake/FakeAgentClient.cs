@@ -125,16 +125,26 @@ public sealed partial class FakeAgentClient(IOptions<FakeAgentOptions> options) 
                         run.Agent = agent.Name;
                         break;
 
+                    case WorkerStartStep worker when BudgetExhausted(run):
+                        run.Agent = worker.Payload.WorkerId;
+                        SkipWorker(run, worker.Payload);
+                        break;
+
                     case WorkerStartStep worker:
                         run.Agent = worker.Payload.WorkerId;
                         run.OpenWorkers.Add(worker.Payload);
                         yield return Emit(run, AgentEventType.WorkerStarted, worker.Payload);
                         break;
 
+                    case WorkerFinishStep worker when run.SkippedWorkers.Contains(worker.Payload.WorkerId):
+                        break;
+
                     case WorkerFinishStep worker:
                         run.Agent = worker.Payload.WorkerId;
                         run.OpenWorkers.RemoveAll(w => w.WorkerId == worker.Payload.WorkerId);
-                        yield return Emit(run, AgentEventType.WorkerFinished, worker.Payload);
+                        yield return Emit(run, AgentEventType.WorkerFinished, run.LimitedWorkers.Contains(worker.Payload.WorkerId)
+                            ? worker.Payload with { Status = WorkerStatus.LimitReached, Summary = $"{worker.Payload.Summary} Sebagian data tidak diambil: {BudgetReason(run)}" }
+                            : worker.Payload);
                         break;
 
                     case ReportApprovalStep:
@@ -168,6 +178,14 @@ public sealed partial class FakeAgentClient(IOptions<FakeAgentOptions> options) 
                             yield return Emit(run, AgentEventType.Token, new TokenPayload(chunk));
                         }
 
+                        break;
+
+                    case ToolStep when run.Agent is { } skipped && run.SkippedWorkers.Contains(skipped):
+                        break;
+
+                    case ToolStep when BudgetExhausted(run):
+                        run.LimitedWorkers.Add(run.Agent!);
+                        NoteLimit(run, BudgetReason(run));
                         break;
 
                     case ToolStep tool:
@@ -556,6 +574,12 @@ public sealed partial class FakeAgentClient(IOptions<FakeAgentOptions> options) 
         public string? InFlightAgent { get; set; }
         public List<WorkerStartedPayload> OpenWorkers { get; } = [];
         public PatternReport? Report { get; set; }
+
+        // Pattern detection: the job budget, enforced as the orchestrators of the real solutions do.
+        public HashSet<string> SkippedWorkers { get; } = [];
+        public HashSet<string> LimitedWorkers { get; } = [];
+        public List<Lead> NotFollowed { get; } = [];
+        public List<string> LimitsReached { get; } = [];
     }
 
     private abstract record Step;

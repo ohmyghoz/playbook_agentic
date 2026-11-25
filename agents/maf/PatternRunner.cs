@@ -59,8 +59,9 @@ internal sealed class PatternRunner(MafAgentOptions options, IChatClient chatCli
         var warned = false;
         var exceeded = false;
 
+        // Defaults make the lists optional in the declared schema; without them AIFunctionFactory rejects a call that leaves one out.
         var finish = AIFunctionFactory.Create(
-            (string summary, List<BrokerShare>? dominantBrokers, List<Lead>? leads, List<Statement>? findings) =>
+            (string summary, List<BrokerShare>? dominantBrokers = null, List<Lead>? leads = null, List<Statement>? findings = null) =>
             {
                 // Models sometimes give broker names or loose targets; only exchange codes reach the orchestrator.
                 var clean = leads?.Select(l => l with { Target = (l.Target ?? "").Trim().ToUpperInvariant() })

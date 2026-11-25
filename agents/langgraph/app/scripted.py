@@ -19,34 +19,57 @@ from langchain_core.tools import BaseTool
 from pydantic import BaseModel, ConfigDict
 
 
+# Pattern detection (use case 2): the scripted model plays a worker or the report writer by role.
+PATTERN_ROLE = re.compile(r"Anda (worker (saham|broker|kepemilikan)|penyusun laporan)")
+PATTERN_SCENARIOS = {"saham": "pattern_stock", "broker": "pattern_broker", "kepemilikan": "pattern_ownership",
+                     "laporan": "pattern_report"}
+PATTERN_TARGET = re.compile(r"Target Anda: (.+?)\. Jendela")
+
+
 class Script:
     def __init__(self, path: str | Path):
         data = json.loads(Path(path).read_text(encoding="utf-8"))
         self.tools: dict[str, dict[str, Any]] = data["tools"]
-        self.memos: dict[str, Any] = data.get("memos", {})
+        # "$name" values are replaced by a memo or report from these sections.
+        self.objects: dict[str, Any] = {**data.get("memos", {}), **data.get("reports", {})}
         self.scenarios: dict[str, dict[str, Any]] = data["scenarios"]
 
-    def next_turn(self, system_text: str, seen_call_ids: set[str]) -> tuple[list[dict[str, Any]], float]:
+    def _scenario(self, system_text: str) -> tuple[dict[str, Any], str]:
+        """UMA: 'scenario=<name>' in the notes. Pattern detection: the agent's role, then role_<target> if present."""
         match = re.search(r"scenario=(\w+)", system_text)
-        scenario = self.scenarios[match.group(1) if match else "approve"]
+        if match:
+            return self.scenarios[match.group(1)], ""
+        role = PATTERN_ROLE.search(system_text)
+        if role is None:
+            return self.scenarios["approve"], ""
+        name = PATTERN_SCENARIOS[role.group(2) or "laporan"]
+        found = PATTERN_TARGET.search(system_text)
+        target = re.sub(r"[^A-Za-z0-9]", "", found.group(1)) if found else ""
+        return self.scenarios.get(f"{name}_{target}", self.scenarios[name]), target
+
+    def next_turn(self, system_text: str, seen_call_ids: set[str]) -> tuple[list[dict[str, Any]], float]:
+        scenario, target = self._scenario(system_text)
         for turn in scenario["turns"]:
-            ids = [item["call"]["id"] for item in turn if "call" in item]
+            resolved = self._resolve(turn, 0, target)
+            ids = [item["call"]["id"] for item in resolved if "call" in item]
             if not ids or not all(i in seen_call_ids for i in ids):
-                return self._resolve(turn, 0), scenario.get("delaySeconds", 0)
+                return resolved, scenario.get("delaySeconds", 0)
         fallback = scenario.get("fallback")
         if fallback is None:
             return [{"text": "Selesai."}], 0
         n = sum(1 for i in seen_call_ids if i.startswith("q")) + 1
-        return self._resolve(fallback, n), scenario.get("delaySeconds", 0)
+        return self._resolve(fallback, n, target), scenario.get("delaySeconds", 0)
 
-    def _resolve(self, turn: list[dict[str, Any]], n: int) -> list[dict[str, Any]]:
+    def _resolve(self, turn: list[dict[str, Any]], n: int, target: str) -> list[dict[str, Any]]:
         def fill(value: Any) -> Any:
             if isinstance(value, str) and value.startswith("$"):
-                return self.memos[value[1:]]
+                return fill(self.objects[value[1:]])
             if isinstance(value, str):
-                return value.replace("{n}", str(n))
+                return value.replace("{n}", str(n)).replace("{target}", target)
             if isinstance(value, dict):
                 return {k: fill(v) for k, v in value.items()}
+            if isinstance(value, list):
+                return [fill(v) for v in value]
             return value
         return [fill(item) for item in turn]
 

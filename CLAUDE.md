@@ -403,7 +403,7 @@ Selesai jika: contract test kedua use case lulus atau setiap kegagalan dijelaska
 - [x] Tahap 12: durabilitas (Bab 13)
 - [x] Tahap 13: use case 2 di aplikasi, dengan agent tiruan
 - [x] Tahap 14: use case 2 di tiga solusi
-- [ ] Tahap 15: contract test use case 2 dan penutupan
+- [x] Tahap 15: contract test use case 2 dan penutupan
 
 ## Catatan keputusan
 
@@ -480,4 +480,8 @@ Tambahkan satu baris per keputusan: tanggal, keputusan, alasan singkat.
 - 2026-11-25: Tahap 14: kode broker harus 2 huruf dan jejak saham 4 huruf; isian lain dibuang. Panggilan ke tool yang tidak ada dihitung sebagai langkah. Ditemukan saat uji live (Qwen menulis nama broker dan memanggil tool `worker_broker`).
 - 2026-11-25: Tahap 14 (ADK): worker memakai `Runner` dan session di memori, karena worker tidak perlu bertahan lebih lama dari job; hanya penyusun laporan memakai `DatabaseSessionService` (app `pattern_report`) supaya jeda approval bertahan setelah restart. Satu `McpToolset` per peran dengan `tool_filter`.
 - 2026-11-25: Tahap 14: tombol kartu approval diganti "Setujui draf" dan "Tolak draf" karena kartu yang sama dipakai untuk memo dan laporan.
+- 2026-11-25: Tahap 15: contract test use case 2 di `AgentContractTests.PatternDetection.cs` (tujuh skenario, keempat adapter). Model tiruan memilih skenario dari peran agent di instruksi (`pattern_<peran>`, atau `pattern_<peran>_<target>` bila ada) dan mengganti `{target}` supaya ID tool call unik antar-worker. Penyusun laporan tiruan bergantian mengirim laporan dengan dan tanpa klaster; validasi di kode memilih yang cocok.
+- 2026-11-25: Tahap 15: agent fake kini menegakkan anggaran tool call per job seperti orchestrator sungguhan (worker yang sedang berjalan berakhir `limit_reached`, worker yang belum mulai dicatat sebagai jejak tidak diikuti). Sebelumnya fake mengabaikan `limits.maxToolCalls`.
+- 2026-11-25: Tahap 15: contract test menemukan dua cacat dan keduanya diperbaiki. MAF `finish_worker` menolak panggilan tanpa `leads` atau `findings` (parameter tanpa nilai bawaan dianggap wajib oleh `AIFunctionFactory`). ADK menutup worker yang dibatalkan sebagai `error` dan masih memulai gelombang worker berikutnya.
+- 2026-11-25: Tahap 15: uji live use case 2 tidak dijadikan test otomatis `Live`, karena satu job memakai 20 sampai 30 panggilan data berbayar dan klaster bergantung pada data pasar hari itu. Hasil uji live dari browser dicatat di `COMPATIBILITY.md`.
 - 2026-11-24: Catatan keamanan: server Azure SQL punya aturan firewall `AllowAll-Experiment` (0.0.0.0–255.255.255.255). Belum diubah; sebaiknya dihapus dan diganti aturan per IP.

@@ -142,6 +142,7 @@ public sealed partial class FakeAgentClient
         var revised = run.Revision > 0;
         return new PatternReport(
             Summary: (revised ? $"Revisi ke-{run.Revision}. " : "") +
+                     (run.LimitsReached.Count > 0 ? "Laporan parsial karena batas job tercapai. " : "") +
                      $"Satu klaster dengan {stocks.Count} saham menunjukkan pola beli terkonsentrasi oleh broker {Broker}. " +
                      "Tidak ditemukan keterkaitan kepemilikan di atas 1%. Pola ini perlu ditelaah lebih lanjut.",
             PeriodStart: job.WindowStart,
@@ -157,14 +158,41 @@ public sealed partial class FakeAgentClient
             [
                 new($"Tidak ada berita material untuk {LeadSymbol} yang menjelaskan kenaikan.", [Ev($"saham-{LeadSymbol}", "idx_news", "Berita emiten")]),
             ],
-            LeadsNotFollowed: [new Lead(LeadKind.Broker, SpreadBroker, "Aktif di lebih dari 30% saham kandidat dan porsi beli bersihnya di bawah ambang.")],
-            LimitsReached: [],
+            LeadsNotFollowed: [new Lead(LeadKind.Broker, SpreadBroker, "Aktif di lebih dari 30% saham kandidat dan porsi beli bersihnya di bawah ambang."), .. run.NotFollowed],
+            LimitsReached: [.. run.LimitsReached],
             DataLimitations:
             [
                 "Data bandar dari IPOT tidak tersedia (HTTP 502); konsentrasi broker dihitung dari broker summary Stockbit.",
                 "Harga tertunda dan kepemilikan hanya untuk pemegang di atas 1% dari register bulanan.",
             ],
             FollowUps: [$"Pantau transaksi {Broker} di ketiga saham pada sesi berikutnya.", $"Minta data transaksi rinci {Broker} untuk periode jendela."]);
+    }
+
+    /// <summary>Only pattern runs have a job budget; the UMA script keeps its own step limit.</summary>
+    private static bool BudgetExhausted(FakeRun run) =>
+        run.Request.Job is { } job && run.ToolCallsUsed >= job.Limits.MaxToolCalls;
+
+    private static string BudgetReason(FakeRun run) => $"Batas {run.Request.Job!.Limits.MaxToolCalls} panggilan data per job tercapai.";
+
+    private static void NoteLimit(FakeRun run, string reason)
+    {
+        if (!run.LimitsReached.Contains(reason))
+        {
+            run.LimitsReached.Add(reason);
+        }
+    }
+
+    private static void SkipWorker(FakeRun run, WorkerStartedPayload worker)
+    {
+        run.SkippedWorkers.Add(worker.WorkerId);
+        NoteLimit(run, BudgetReason(run));
+        var (kind, target) = worker.Role switch
+        {
+            WorkerRole.Broker => (LeadKind.Broker, worker.Target),
+            WorkerRole.Ownership => (LeadKind.Stock, worker.Target.Split(',')[0].Trim()),
+            _ => (LeadKind.Stock, worker.Target),
+        };
+        run.NotFollowed.Add(new Lead(kind, target, $"Tidak dijalankan: {BudgetReason(run)}"));
     }
 
     private static string Period(PatternJob job) =>

@@ -8,7 +8,7 @@ namespace Surveillance.Web.Tests.Contract;
 /// scenarios.json through 'scenario=&lt;name&gt;' in the analyst notes, so each adapter's scripted
 /// model plays the same turns. Results are summarized in contracts/COMPATIBILITY.md.
 /// </summary>
-public abstract class AgentContractTests
+public abstract partial class AgentContractTests
 {
     private static readonly TimeSpan RunTimeout = TimeSpan.FromSeconds(60);
 

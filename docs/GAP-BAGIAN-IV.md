@@ -35,6 +35,14 @@ setelah restart (CHANGE-003), dan retensi data.
 Diperbarui setelah Tahap 13: use case 2 di aplikasi dengan agent tiruan (CHANGE-002). Butir yang berubah merujuk
 ke nama file dan method, bukan nomor baris, karena nomor baris lama sudah bergeser.
 
+Diperbarui setelah Tahap 14: use case 2 di MAF, LangGraph, dan ADK.
+
+Pembaruan terakhir, setelah Tahap 15 (25 November 2026): contract test use case 2 untuk
+keempat adapter (`AgentContractTests.PatternDetection.cs`, hasil di `contracts/COMPATIBILITY.md`)
+dan indeks buku (`docs/BOOK-INDEX.md`). Semua butir Bab 10 sampai 13 berstatus **Ya**, jadi
+tidak ada butir "Sebagian" atau "Belum" yang perlu diberi alasan. Hal yang sengaja belum
+dikerjakan, walau tidak menurunkan status butir, dicatat di [Batas yang disengaja](#batas-yang-disengaja).
+
 ## Ringkasan
 
 | Bab | Ya | Sebagian | Belum |
@@ -51,10 +59,13 @@ Kekuatan utama yang sudah ada:
 - kartu approval dengan tiga keputusan, jeda dan lanjut yang bertahan setelah restart.
 - database aplikasi sebagai sumber kebenaran, terpisah dari state framework.
 
-Kekurangan terbesar:
+Yang ditambahkan sejak pemetaan awal:
 
-- (Tahap 9) tiga transport (SSE, polling, SignalR) sudah ada; lihat `docs/TRANSPORTS.md`.
-- use case 2, retensi data, dan notifikasi belum ada.
+- tiga transport (SSE, polling, SignalR) dengan ping dan konfigurasi proxy; lihat `docs/TRANSPORTS.md` dan `docs/PROXY.md`.
+- pola UI per partial view dan modul JavaScript; lihat `docs/PATTERNS.md`.
+- antrean approval, pengambilan kasus, kedaluwarsa, dan audit; lihat `docs/APPROVAL-STATES.md`.
+- repository, restart, dan retensi; lihat `docs/RESTART.md` dan `docs/RETENTION.md`.
+- use case 2 (deteksi pola) di keempat adapter, dengan notifikasi job selesai.
 
 Butir yang **butuh perubahan kontrak event** ditandai 🔶 dan dirangkum di bagian akhir.
 
@@ -156,15 +167,28 @@ paling dibutuhkan buku.
 
 | Kebutuhan | Bab | Perubahan yang diusulkan | Bisa tanpa perubahan kontrak? |
 |---|---|---|---|
-| Progres per worker di use case 2 | 13 | Field opsional `agentName` di semua event (sudah direncanakan di Tahap 6) | Tidak |
-| Indikator agent sedang berpikir | 11 | Event baru, misalnya `model_call_started` (payload kosong atau nomor giliran) | Ya, dengan pendekatan UI: tampilkan indikator jika lebih dari N detik tanpa event. Tidak setepat event dari agent. |
+| Progres per worker di use case 2 | 13 | ✅ Diterapkan di Tahap 13 dan 14: field opsional `agentName`, event `worker_started` dan `worker_finished`, field `useCase` di `POST /runs` (CHANGE-002) | – |
+| Indikator agent sedang berpikir | 11 | ✅ Diputuskan tanpa perubahan kontrak: indikator muncul jika tidak ada event selama N detik (`thinking-indicator.js`, Tahap 10) | – |
 | Progres multi-langkah | 11 | ✅ Diterapkan di Tahap 8: event `step_started` (CHANGE-001) | – |
 | Bukti dan sumber data mentah | 11 | ✅ Diterapkan di Tahap 8: `source` dan `resultPreview` di `tool_call_finished`; data mentah lewat endpoint aplikasi, bukan endpoint service agent (CHANGE-001) | – |
-| Keputusan analis di aliran event | 12 | Event `approval_decided` (keputusan, `decidedBy`, komentar) supaya putar ulang dan audit lengkap dari satu aliran | Ya, aplikasi bisa menggabungkan event dengan tabel `ApprovalDecisionRecord` saat menampilkan. Dengan event baru, urutan waktunya lebih jelas. |
-| Approval kedaluwarsa yang diputuskan agent | 12 | Kode error baru, misalnya `approval_expired`, atau `outcome: expired` di `done` | Ya, jika kedaluwarsa diputuskan aplikasi: aplikasi cukup memanggil pembatalan, dan hasilnya `done(cancelled)`. |
-| Label tool yang ramah | 11 | Field opsional `displayName` di `tool_call_started` | Ya, dengan peta nama tool ke label di JavaScript. Disarankan tanpa perubahan kontrak. |
+| Keputusan analis di aliran event | 12 | ✅ Diputuskan tanpa perubahan kontrak: garis waktu audit menggabungkan event dengan `ApprovalDecisionRecord` berdasarkan waktu (`AuditTimeline`, Tahap 11) | – |
+| Approval kedaluwarsa | 12 | ✅ Diputuskan tanpa perubahan kontrak: aplikasi memutuskan kedaluwarsa lalu memanggil pembatalan, dan hasilnya `done(cancelled)` dengan alasan di audit (`ApprovalExpiryService`, Tahap 11) | – |
+| Label tool yang ramah | 11 | ✅ Diputuskan tanpa perubahan kontrak: peta nama tool ke label di JavaScript (Tahap 10) | – |
+| Run terputus karena restart | 13 | ✅ Diterapkan di Tahap 12: kode error `run_interrupted` yang bisa diulang (CHANGE-003) | – |
 
 Hal yang **tidak** butuh perubahan kontrak: ping keep-alive di SSE aplikasi,
 partial view per pola, halaman antrean approval, repository,
 retensi, dan halaman demo. Perbaikan konkurensi keputusan dan autentikasi
 sudah dikerjakan di Tahap 7 tanpa perubahan kontrak.
+
+## Batas yang disengaja
+
+Hal berikut tidak dikerjakan dengan sengaja. Semuanya tidak menurunkan status butir di atas,
+tapi perlu disebut bila contohnya dikutip di buku.
+
+| Hal | Alasan |
+|---|---|
+| Pembersihan database service Python belum dijadwalkan otomatis | Tahap 12d hanya meminta pembersihan ini didokumentasikan. Database itu milik service (`service.db`, `checkpoints.db`, `sessions.db`), bukan milik aplikasi. `docs/RETENTION.md` menjelaskan query-nya dan menyarankan Task Scheduler saat service mati atau tidak ada run yang menunggu approval. |
+| Uji live use case 2 belum menjadi test otomatis `Live` | Satu job memakai 20 sampai 30 panggilan data berbayar, dan klaster bergantung pada data pasar hari itu. Uji live dilakukan dari browser dan dicatat di `contracts/COMPATIBILITY.md`. |
+| Autentikasi hanya untuk demo | Tiga akun dari konfigurasi yang masuk tanpa kata sandi. Penerapan sungguhan menggantinya dengan penyedia identitas organisasi, misalnya Microsoft Entra ID. Catatan ini tertulis di kode dan halaman login. |
+| Data bandar tidak tersedia | `idx_bandar` hanya membaca IPOT, yang membalas HTTP 502. Agent mencatatnya sebagai data tidak tersedia, sesuai keputusan 25 November 2026. |

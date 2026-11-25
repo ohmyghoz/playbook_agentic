@@ -410,9 +410,12 @@ class RunManager:
         counter = {"n": 0}
 
         async def narrate(text: str) -> None:
-            await self._emit(run, "token", {"text": text})
+            if not abort.is_set():
+                await self._emit(run, "token", {"text": text})
 
         async def run_worker(worker: dict[str, Any]) -> WorkerOutcome:
+            if abort.is_set():
+                raise asyncio.CancelledError  # stopped: the orchestrator starts no further worker
             worker_id = worker["workerId"]
             run.open_workers[worker_id] = worker["role"]
             await self._emit(run, "worker_started", worker, worker_id)
@@ -442,11 +445,15 @@ class RunManager:
                 log.exception("Worker %s failed in run %s", worker_id, run_id)
             report = outcome.get("report")
             limited = outcome.get("warned") or outcome.get("exceeded")
-            status = "limit_reached" if limited else "ok" if report else "error"
-            summary = report.summary if report else (
-                f"Batas {job.limits.max_steps_per_worker} langkah worker tercapai sebelum temuan dilaporkan." if limited
-                else "Worker berhenti tanpa melaporkan temuan.")
-            await self._close_open_calls(run, "step_limit" if limited else "internal", "Panggilan tidak selesai.", worker_id)
+            if abort.is_set() and not report:
+                status, summary = "cancelled", "Dihentikan oleh pengguna."
+                await self._close_open_calls(run, "cancelled", summary, worker_id)
+            else:
+                status = "limit_reached" if limited else "ok" if report else "error"
+                summary = report.summary if report else (
+                    f"Batas {job.limits.max_steps_per_worker} langkah worker tercapai sebelum temuan dilaporkan." if limited
+                    else "Worker berhenti tanpa melaporkan temuan.")
+                await self._close_open_calls(run, "step_limit" if limited else "internal", "Panggilan tidak selesai.", worker_id)
             if run.open_workers.pop(worker_id, None) is not None:
                 payload = {"workerId": worker_id, "role": worker["role"], "status": status, "summary": summary[:500]}
                 if report and report.leads:

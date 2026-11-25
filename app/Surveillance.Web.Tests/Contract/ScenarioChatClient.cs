@@ -61,19 +61,47 @@ public sealed partial class ScenarioChatClient : IChatClient
 
     public void Dispose() { }
 
+    /// <summary>UMA: 'scenario=&lt;name&gt;' in the notes. Pattern detection: the agent's role, then role_&lt;target&gt; if present.</summary>
+    private (JsonElement Scenario, string Target) Scenario(string system)
+    {
+        var scenarios = _root.GetProperty("scenarios");
+        var match = ScenarioName().Match(system);
+        if (match.Success)
+        {
+            return (scenarios.GetProperty(match.Groups[1].Value), "");
+        }
+
+        var role = PatternRole().Match(system);
+        if (!role.Success)
+        {
+            return (scenarios.GetProperty("approve"), "");
+        }
+
+        var name = role.Groups[2].Value switch
+        {
+            "saham" => "pattern_stock",
+            "broker" => "pattern_broker",
+            "kepemilikan" => "pattern_ownership",
+            _ => "pattern_report",
+        };
+        var found = PatternTarget().Match(system);
+        var target = found.Success ? NonAlphanumeric().Replace(found.Groups[1].Value, "") : "";
+        return (scenarios.TryGetProperty($"{name}_{target}", out var specific) ? specific : scenarios.GetProperty(name), target);
+    }
+
     private (List<JsonElement> Items, double Delay) NextTurn(string system, HashSet<string> seen)
     {
-        var match = ScenarioName().Match(system);
-        var scenario = _root.GetProperty("scenarios").GetProperty(match.Success ? match.Groups[1].Value : "approve");
+        var (scenario, target) = Scenario(system);
         var delay = scenario.TryGetProperty("delaySeconds", out var d) ? d.GetDouble() : 0;
 
         foreach (var turn in scenario.GetProperty("turns").EnumerateArray())
         {
-            var ids = turn.EnumerateArray().Where(i => i.TryGetProperty("call", out _))
+            var resolved = Resolve(turn, 0, target);
+            var ids = resolved.Where(i => i.TryGetProperty("call", out _))
                 .Select(i => i.GetProperty("call").GetProperty("id").GetString()!).ToList();
             if (ids.Count == 0 || !ids.All(seen.Contains))
             {
-                return (Resolve(turn, 0), delay);
+                return (resolved, delay);
             }
         }
 
@@ -83,22 +111,39 @@ public sealed partial class ScenarioChatClient : IChatClient
         }
 
         var n = seen.Count(id => id.StartsWith('q')) + 1;
-        return (Resolve(fallback, n), delay);
+        return (Resolve(fallback, n, target), delay);
     }
 
-    /// <summary>Replaces "$memo" references and "{n}" placeholders, as scripted.py does.</summary>
-    private List<JsonElement> Resolve(JsonElement turn, int n)
+    /// <summary>Replaces "$memo" and "$report" references and "{n}" and "{target}" placeholders, as scripted.py does.</summary>
+    private List<JsonElement> Resolve(JsonElement turn, int n, string target)
     {
-        var memos = _root.GetProperty("memos");
-        var json = turn.GetRawText().Replace("{n}", n.ToString());
-        foreach (var memo in memos.EnumerateObject())
+        var json = turn.GetRawText();
+        foreach (var section in new[] { "memos", "reports" })
         {
-            json = json.Replace($"\"${memo.Name}\"", memo.Value.GetRawText());
+            if (!_root.TryGetProperty(section, out var objects))
+            {
+                continue;
+            }
+
+            foreach (var obj in objects.EnumerateObject())
+            {
+                json = json.Replace($"\"${obj.Name}\"", obj.Value.GetRawText());
+            }
         }
 
+        json = json.Replace("{n}", n.ToString()).Replace("{target}", target);
         return JsonDocument.Parse(json).RootElement.EnumerateArray().Select(e => e.Clone()).ToList();
     }
 
     [GeneratedRegex(@"scenario=(\w+)")]
     private static partial Regex ScenarioName();
+
+    [GeneratedRegex("Anda (worker (saham|broker|kepemilikan)|penyusun laporan)")]
+    private static partial Regex PatternRole();
+
+    [GeneratedRegex(@"Target Anda: (.+?)\. Jendela")]
+    private static partial Regex PatternTarget();
+
+    [GeneratedRegex("[^A-Za-z0-9]")]
+    private static partial Regex NonAlphanumeric();
 }
