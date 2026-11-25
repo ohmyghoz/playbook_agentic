@@ -160,6 +160,7 @@ sungguhan diberi kategori `Live` dan hanya berjalan bila `RUN_LIVE_TESTS=1`, kar
 | [`contracts/asd-pattern-detection.md`](contracts/asd-pattern-detection.md) | spesifikasi agent use case 2 |
 | [`contracts/CHANGE-*.md`](contracts/) | riwayat perubahan kontrak dan alasannya |
 | [`contracts/COMPATIBILITY.md`](contracts/COMPATIBILITY.md) | hasil contract test dan perbandingan tiga solusi |
+| [`docs/diagrams/use-case-2-architecture.drawio`](docs/diagrams/use-case-2-architecture.drawio) | arsitektur solusi agentic AI untuk use case 2 |
 | [`docs/diagrams/use-case-2-flow.drawio`](docs/diagrams/use-case-2-flow.drawio) | alur use case 2 langkah demi langkah, dengan file dan fungsi; buka di draw.io |
 | [`docs/BOOK-INDEX.md`](docs/BOOK-INDEX.md) | butir outline Bab 10 sampai 13 dan contohnya di kode |
 | [`docs/GAP-BAGIAN-IV.md`](docs/GAP-BAGIAN-IV.md) | status tiap butir dan batas yang disengaja |
