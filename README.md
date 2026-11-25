@@ -106,10 +106,19 @@ Langkahnya:
    .venv\Scripts\python -m pip install -r requirements.txt
    ```
 
-5. Nyalakan server MCP, LangGraph, dan ADK. Tiap service terbuka di jendela sendiri:
+5. Jalankan aplikasi dengan `dotnet run --project app\Surveillance.Web` atau dari Visual Studio. Di
+   lingkungan Development, aplikasi menjalankan `scripts\start-all.ps1` sendiri, sehingga server MCP,
+   LangGraph, dan ADK ikut menyala, masing-masing di jendela sendiri. Service yang sudah berjalan
+   tidak dinyalakan lagi, dan service tetap berjalan setelah aplikasi berhenti; tutup jendelanya untuk
+   menghentikan. Aplikasi juga membaca `IDX_MCP_TOKEN` dari environment User bila terminalnya dibuka
+   sebelum token disimpan. Matikan dengan `LocalServices:AutoStart = false` di
+   `appsettings.Development.json`.
+
+   Service juga bisa dinyalakan tanpa aplikasi:
 
    ```powershell
-   .\scripts\start-all.ps1 -Provider maf   # atau langgraph, adk, fake
+   .\scripts\start-all.ps1                 # MCP, LangGraph, dan ADK saja
+   .\scripts\start-all.ps1 -Provider maf   # ditambah aplikasi web
    ```
 
 6. Solusi aktif bisa diganti di halaman Setting (`/settings`, hanya untuk supervisor). Pilihan berlaku

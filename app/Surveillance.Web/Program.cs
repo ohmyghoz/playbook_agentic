@@ -43,6 +43,9 @@ builder.Services.AddSingleton<Surveillance.Web.Data.Repositories.IApprovalReposi
 builder.Services.AddSingleton<Surveillance.Web.Data.Repositories.ISettingsRepository, Surveillance.Web.Data.Repositories.SettingsRepository>();
 builder.Services.AddSingleton<DatabaseMigrator>();
 
+// Development only: start the MCP server and the Python agent services with the app.
+LocalServicesLauncher.AddTo(builder);
+
 builder.Services.AddAgentClients(builder.Configuration);
 builder.Services.AddSingleton<AgentSelection>();
 builder.Services.AddSingleton<EventBroadcaster>();
