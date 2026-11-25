@@ -12,8 +12,9 @@ namespace Surveillance.Web.Investigations;
 /// Starting ─► Running ◄──────────────┐
 ///    │          │                    │ analyst decides
 ///    │          ├─► AwaitingApproval ┘
-///    │          │          │
+///    │          │          ├─► Expired   (final; the application stops the run, see ApprovalExpiryService)
 ///    └──────────┴──────────┴─► Approved | Rejected | Cancelled | Failed   (final)
+/// The same diagram in Mermaid: docs/APPROVAL-STATES.md.
 /// </remarks>
 public static class CaseStateMachine
 {
@@ -22,11 +23,12 @@ public static class CaseStateMachine
         [CaseStatus.Starting] = [CaseStatus.Running, CaseStatus.Failed],
         [CaseStatus.Running] = [CaseStatus.AwaitingApproval, CaseStatus.Approved, CaseStatus.Rejected,
                                 CaseStatus.Cancelled, CaseStatus.Failed],
-        [CaseStatus.AwaitingApproval] = [CaseStatus.Running, CaseStatus.Cancelled, CaseStatus.Failed],
+        [CaseStatus.AwaitingApproval] = [CaseStatus.Running, CaseStatus.Cancelled, CaseStatus.Failed, CaseStatus.Expired],
         [CaseStatus.Approved] = [],
         [CaseStatus.Rejected] = [],
         [CaseStatus.Cancelled] = [],
         [CaseStatus.Failed] = [],
+        [CaseStatus.Expired] = [],
     };
 
     /// <summary>

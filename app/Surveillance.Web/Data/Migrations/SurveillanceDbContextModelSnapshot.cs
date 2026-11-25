@@ -124,6 +124,41 @@ namespace Surveillance.Web.Data.Migrations
                     b.ToTable("Decisions");
                 });
 
+            modelBuilder.Entity("Surveillance.Web.Data.CaseAuditRecord", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<string>("Actor")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<DateTime>("At")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("CaseId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Detail")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CaseId", "At");
+
+                    b.ToTable("CaseAuditRecords", (string)null);
+                });
+
             modelBuilder.Entity("Surveillance.Web.Data.InvestigationCase", b =>
                 {
                     b.Property<Guid>("Id")
@@ -132,6 +167,23 @@ namespace Surveillance.Web.Data.Migrations
 
                     b.Property<DateOnly>("AnomalyDate")
                         .HasColumnType("date");
+
+                    b.Property<int?>("ApprovalTimeoutMinutes")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("AwaitingSince")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("ClaimActivityAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ClaimedBy")
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<string>("ClaimedByUser")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
@@ -171,6 +223,8 @@ namespace Surveillance.Web.Data.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("CreatedAt");
+
+                    b.HasIndex("Status", "AwaitingSince");
 
                     b.ToTable("Cases");
                 });
@@ -231,6 +285,15 @@ namespace Surveillance.Web.Data.Migrations
                 {
                     b.HasOne("Surveillance.Web.Data.InvestigationCase", null)
                         .WithMany("Decisions")
+                        .HasForeignKey("CaseId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Surveillance.Web.Data.CaseAuditRecord", b =>
+                {
+                    b.HasOne("Surveillance.Web.Data.InvestigationCase", null)
+                        .WithMany()
                         .HasForeignKey("CaseId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();

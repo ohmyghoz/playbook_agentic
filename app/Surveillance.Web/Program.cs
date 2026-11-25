@@ -43,6 +43,13 @@ builder.Services.AddSingleton<RunPump>();
 builder.Services.AddSingleton<InvestigationService>();
 builder.Services.AddHostedService<StartupRecovery>();
 
+// Approval deadlines, claims and the audit timeline (Bab 12).
+builder.Services.Configure<ApprovalOptions>(builder.Configuration.GetSection("Approval"));
+builder.Services.AddSingleton<CaseClaims>();
+builder.Services.AddSingleton<AuditTimeline>();
+builder.Services.AddSingleton<ApprovalExpiryService>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<ApprovalExpiryService>());
+
 // Event transports to the browser: SSE (controller), polling (events.json) and SignalR (hub).
 builder.Services.Configure<TransportOptions>(builder.Configuration.GetSection("Transport"));
 builder.Services.AddSignalR();

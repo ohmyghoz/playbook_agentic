@@ -22,6 +22,26 @@
     };
 
     AgentUi.register("error-banner", ctx => {
+        // The agent ends both a stop and an expiry with done(cancelled); the application knows which.
+        async function explainCancel(p) {
+            try {
+                const response = await fetch(ctx.data.claimUrl, { headers: { Accept: "application/json" } });
+                const state = await response.json();
+                if (state.status !== "expired") return;
+                doneBanner.className = "alert alert-warning";
+                doneBanner.textContent = "Draf kedaluwarsa: " + (state.decision && state.decision.comment || "batas waktu keputusan terlewati.")
+                    + " Panggilan data: " + p.toolCallsUsed + ".";
+                const status = ctx.part("status");
+                if (status) {
+                    status.textContent = state.statusLabel;
+                    status.className = "status status-expired";
+                }
+                ctx.root.dispatchEvent(new CustomEvent("agentui:case-state", { detail: state }));
+            } catch {
+                // keep the generic text
+            }
+        }
+
         const banner = ctx.part("error-banner");
         const doneBanner = ctx.part("done-banner");
         const retry = ctx.part("retry-form");
@@ -40,6 +60,7 @@
                     const [cls, text] = doneText[p.outcome];
                     doneBanner.className = "alert " + cls;
                     doneBanner.textContent = text + " Panggilan data: " + p.toolCallsUsed + ".";
+                    if (p.outcome === "cancelled" && ctx.data.claimUrl && ctx.mode === "live") explainCancel(p);
                 }
             },
             reset() {

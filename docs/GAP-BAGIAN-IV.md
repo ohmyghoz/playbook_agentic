@@ -24,7 +24,10 @@ Diperbarui setelah Tahap 9: tiga transport, ping SSE dan konfigurasi proxy, hala
 `/lab/transport` dan `/lab/sync`.
 
 Diperbarui setelah Tahap 10: pola UI dipecah per partial dan modul, indikator
-berpikir, label tool, progres tahap, panel bukti, dan `/lab/patterns`. Butir yang berubah merujuk
+berpikir, label tool, progres tahap, panel bukti, dan `/lab/patterns`.
+
+Diperbarui setelah Tahap 11: antrean approval, pengambilan dan pengalihan kasus,
+kedaluwarsa approval, garis waktu audit, `/lab/approval`, dan `docs/APPROVAL-STATES.md`. Butir yang berubah merujuk
 ke nama file dan method, bukan nomor baris, karena nomor baris lama sudah bergeser.
 
 ## Ringkasan
@@ -33,7 +36,7 @@ ke nama file dan method, bukan nomor baris, karena nomor baris lama sudah berges
 |---|---|---|---|
 | 10. Transport dan streaming | 8 | 0 | 0 |
 | 11. Pola UI/UX agentic | 11 | 0 | 0 |
-| 12. Human-in-the-loop | 4 | 4 | 0 |
+| 12. Human-in-the-loop | 8 | 0 | 0 |
 | 13. State dan durabilitas | 3 | 2 | 3 |
 
 Kekuatan utama yang sudah ada:
@@ -120,12 +123,12 @@ Sejak Tahap 10, setiap pola punya satu partial view dan satu modul JavaScript
 |---|---|---|---|
 | Skenario: memo UMA terkirim tanpa persetujuan | **Ya** | `asd-investigator-uma.md` (tool `submit_memo` wajib approval), event `approval_required` | Keempat adapter memaksa approval: MAF lewat `ApprovalRequiredAIFunction`, LangGraph lewat `interrupt()`, ADK lewat Tool Confirmation, fake lewat skrip. |
 | Titik henti agent dan kenapa eskalasi butuh manusia | **Ya** | `asd-investigator-uma.md` (bagian Keputusan analis), `ApprovalRequiredPayload` di `Payloads.cs` | – |
-| Kartu approval, tiga keputusan | **Ya** | Template `Details.cshtml:95-121`, `addApproval`/`submitDecision` (`investigation.js:172`, `:281`), endpoint `InvestigationController.cs:85-103`, antiforgery | Komentar wajib untuk revisi dan tolak sudah divalidasi di browser dan server. |
+| Kartu approval, tiga keputusan | **Ya** | `_ApprovalCard.cshtml` + `approval-card.js`, `InvestigationController.Approval`, antiforgery | Komentar wajib untuk revisi dan tolak divalidasi di browser dan server. Draf yang diganti tetap terlihat bersama keputusan dan komentar yang menggantinya (riwayat versi memo). |
 | Jeda dan lanjut ujung ke ujung lewat `IAgentClient` | **Ya** | `IAgentClient.ResumeAsync`, `InvestigationService.DecideAsync` (`:87-146`), `RunPump.Start`; contract test `Approve_pauses...`, `Revise_produces...` untuk keempat adapter | Terbukti juga melewati restart service LangGraph di browser. |
-| Antrean approval untuk analis | **Sebagian** | Daftar kasus `Index.cshtml:69-100` dengan status "Menunggu keputusan analis" | Belum ada halaman antrean khusus (filter status, urut paling lama menunggu, jumlah), penugasan ke analis, atau penanda kasus yang sedang dibuka orang lain. |
-| Kasus tepi: approval tak kunjung datang, analis lain melanjutkan | **Sebagian** | Pengecekan `approvalId` usang (`DecisionResult.StaleApproval`). Dua keputusan bersamaan: `InvestigationService.DecideAsync` merebut kasus dengan update bersyarat (`AwaitingApproval` → `Running`) dalam satu transaksi; hanya satu yang menang, yang lain mendapat `DecisionResult.AlreadyDecided` dan HTTP 409 "Kasus ini sudah diputuskan oleh …", tanpa menyentuh agent. Test: `DecisionConcurrencyTests.cs` | Belum ada batas waktu, pengingat, atau kedaluwarsa approval (ASD sengaja tanpa batas waktu). Kedaluwarsa yang diputuskan agent butuh 🔶. |
-| Jejak audit: "siapa menyetujui ini?" | **Sebagian** | Tabel `ApprovalDecisionRecord` (`Entities.cs:56-65`: keputusan, komentar, `DecidedBy`, `DecidedAt`, `ApprovalId`), daftar "Keputusan analis" di `Details.cshtml:76`, event tersimpan di `AgentEventRecord` | `DecidedBy` diambil dari pengguna yang login (`InvestigationController.Approval`), bukan dari isian formulir. Autentikasi masih untuk demo: tiga akun dari konfigurasi `DemoUsers`, masuk tanpa kata sandi (`Auth/DemoUsers.cs`). Belum ada halaman atau ekspor audit, dan keputusan belum masuk aliran event (lihat 🔶 `approval_decided`). |
-| Demo 12-1: dua panel saling terhubung | **Sebagian** | `EventBroadcaster.cs` menyiarkan event ke semua koneksi kasus yang sama | Dua tab browser untuk kasus yang sama sudah saling sinkron. State machine kasus sudah ada di satu file (`CaseStateMachine.cs`, dengan test per pasangan status). Belum ada halaman dua panel (sisi agent menunggu, sisi analis memutuskan) dan diagram Mermaid-nya (Tahap 11). |
+| Antrean approval untuk analis | **Ya** | `/approvals` (`ApprovalsController`, `Views/Approvals/Index.cshtml`): jumlah draf, urut dari yang paling lama menunggu, lama menunggu, batas waktu, penanda "Hampir kedaluwarsa", pemegang kasus, dan alihkan untuk supervisor; `CaseClaims.cs`, `_CaseClaim.cshtml` + `case-claim.js` | Pengambilan kasus lepas sendiri setelah 15 menit tanpa aktivitas. |
+| Kasus tepi: approval tak kunjung datang, analis lain melanjutkan | **Ya** | Kedaluwarsa oleh aplikasi: `ApprovalExpiryService.cs` (batas dari `Approval:ExpiryHours`, status `Expired`, alasan tercatat, run dihentikan lewat jalur tombol Hentikan); analis lain: pengambilan dan pengalihan kasus (`CaseClaims.cs`); konkurensi: `DecideAsync` (Tahap 7) | Tanpa perubahan kontrak, sesuai Keputusan kontrak. Diagram dan aturan menang-kalah ada di `docs/APPROVAL-STATES.md`. |
+| Jejak audit: "siapa menyetujui ini?" | **Ya** | `/investigations/{id}/audit` dan ekspor `audit.json` (`AuditTimeline.cs`, `Views/Investigation/Audit.cshtml`): event agent, keputusan analis, serta tindakan aplikasi (ambil, lepas, alihkan, kedaluwarsa) dalam satu urutan waktu; tabel `CaseAuditRecords` | Autentikasi masih untuk demo (Tahap 7). |
+| Demo 12-1: dua panel saling terhubung | **Ya** | `/lab/approval` (`Views/Lab/Approval.cshtml`): sisi agent (tahap, narasi, panggilan data) dan sisi analis (ambil kasus, kartu approval) untuk kasus yang sama; kasus Lab kedaluwarsa setelah 2 menit; `docs/APPROVAL-STATES.md` (diagram Mermaid yang cocok dengan `CaseStateMachine.cs`) | Diuji di browser: revisi, persetujuan, dan kedaluwarsa. |
 
 ## Bab 13: State, Sesi, Durabilitas, dan Interaksi Asinkron
 

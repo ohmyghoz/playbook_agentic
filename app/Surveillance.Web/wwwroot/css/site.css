@@ -37,6 +37,7 @@ body {
 .status-rejected { background: #e5e7eb; color: #1f2937; }
 .status-cancelled { background: #ffedd5; color: #7c2d12; }
 .status-failed { background: #fee2e2; color: #7f1d1d; }
+.status-expired { background: #fde68a; color: #713f12; }
 
 .narrative { white-space: pre-wrap; min-height: 8rem; max-height: 22rem; overflow-y: auto; font-size: 0.95rem; line-height: 1.55; }
 

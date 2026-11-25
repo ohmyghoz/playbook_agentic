@@ -118,6 +118,13 @@ public sealed class RunPump(
         entry.Property(x => x.LastSequence).IsModified = true;
         entry.Property(x => x.UpdatedAt).IsModified = true;
 
+        // The approval deadline counts from the moment each draft starts waiting.
+        if (status != cursor.Status && (status == CaseStatus.AwaitingApproval || cursor.Status == CaseStatus.AwaitingApproval))
+        {
+            stub.AwaitingSince = status == CaseStatus.AwaitingApproval ? e.Timestamp : null;
+            entry.Property(x => x.AwaitingSince).IsModified = true;
+        }
+
         try
         {
             await db.SaveChangesAsync();

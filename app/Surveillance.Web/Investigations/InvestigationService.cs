@@ -16,7 +16,8 @@ public sealed record StartInvestigation(
     long? Volume,
     double? AvgVolume,
     double? VolumeRatio,
-    string? Notes);
+    string? Notes,
+    int? ApprovalTimeoutMinutes = null);
 
 public enum DecisionResult
 {
@@ -26,9 +27,12 @@ public enum DecisionResult
     StaleApproval,
     CommentRequired,
     AlreadyDecided,
+
+    /// <summary>Another analyst holds the case (see <see cref="CaseClaims"/>).</summary>
+    ClaimedByOther,
 }
 
-/// <param name="DecidedBy">Who made the decision that won, when the result is <see cref="DecisionResult.AlreadyDecided"/>.</param>
+/// <param name="DecidedBy">Who made the decision that won (AlreadyDecided), or who holds the case (ClaimedByOther).</param>
 public sealed record DecisionOutcome(DecisionResult Result, string? DecidedBy = null);
 
 /// <summary>
@@ -41,6 +45,7 @@ public sealed class InvestigationService(
     IDbContextFactory<SurveillanceDbContext> dbFactory,
     RunPump pump,
     EventBroadcaster broadcaster,
+    Microsoft.Extensions.Options.IOptions<ApprovalOptions> approval,
     ILogger<InvestigationService> logger)
 {
     public async Task<Guid> StartAsync(StartInvestigation input, CancellationToken ct)
@@ -56,6 +61,7 @@ public sealed class InvestigationService(
             TriggerJson = JsonSerializer.Serialize(trigger, AgentJson.Options),
             Notes = string.IsNullOrWhiteSpace(input.Notes) ? null : input.Notes.Trim(),
             Provider = await selection.GetActiveAsync(ct),
+            ApprovalTimeoutMinutes = input.ApprovalTimeoutMinutes,
             Status = CaseStatus.Starting,
             CreatedAt = now,
             UpdatedAt = now,
@@ -95,6 +101,9 @@ public sealed class InvestigationService(
     /// approval at once, exactly one wins: the case is claimed with a conditional update
     /// (AwaitingApproval → Running) and only the request that changed the row goes on.
     /// The other gets <see cref="DecisionResult.AlreadyDecided"/> and never reaches the agent.
+    /// A case held by another analyst (active claim, <see cref="CaseClaims"/>) is refused with
+    /// <see cref="DecisionResult.ClaimedByOther"/>; an unclaimed case is decided directly, so the
+    /// claim step is a UI convention backed by the server, not a second gate that can lose decisions.
     /// </summary>
     public async Task<DecisionOutcome> DecideAsync(Guid caseId, string approvalId, Decision decision,
         string? comment, string decidedBy, CancellationToken ct)
@@ -131,6 +140,8 @@ public sealed class InvestigationService(
 
         var normalizedComment = string.IsNullOrWhiteSpace(comment) ? null : comment.Trim();
         var running = CaseStateMachine.Move(CaseStatus.AwaitingApproval, CaseStatus.Running);
+        var who = decidedBy.Trim();
+        var claimCutoff = approval.Value.ClaimCutoff(DateTime.UtcNow);
 
         // A user transaction must run inside the execution strategy when retry on failure is on.
         var claimed = await db.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
@@ -138,9 +149,14 @@ public sealed class InvestigationService(
             db.ChangeTracker.Clear();
             await using var tx = await db.Database.BeginTransactionAsync(ct);
             var changed = await db.Cases
-                .Where(c => c.Id == caseId && c.Status == CaseStatus.AwaitingApproval)
+                .Where(c => c.Id == caseId && c.Status == CaseStatus.AwaitingApproval
+                            && (c.ClaimedBy == null || c.ClaimedBy == who || c.ClaimActivityAt < claimCutoff))
                 .ExecuteUpdateAsync(s => s
                     .SetProperty(c => c.Status, running)
+                    .SetProperty(c => c.AwaitingSince, (DateTime?)null)
+                    .SetProperty(c => c.ClaimedBy, (string?)null)
+                    .SetProperty(c => c.ClaimedByUser, (string?)null)
+                    .SetProperty(c => c.ClaimActivityAt, (DateTime?)null)
                     .SetProperty(c => c.UpdatedAt, DateTime.UtcNow), ct);
             if (changed == 0)
             {
@@ -163,6 +179,12 @@ public sealed class InvestigationService(
 
         if (!claimed)
         {
+            var now = await db.Cases.AsNoTracking().SingleAsync(c => c.Id == caseId, ct);
+            if (now.Status == CaseStatus.AwaitingApproval && approval.Value.ClaimIsActive(now, DateTime.UtcNow) && now.ClaimedBy != who)
+            {
+                return new(DecisionResult.ClaimedByOther, now.ClaimedBy);
+            }
+
             logger.LogInformation("Decision on case {CaseId} by {DecidedBy} lost the race", caseId, decidedBy);
             return new(DecisionResult.AlreadyDecided, await WinnerOfAsync(db, caseId, approvalId, ct));
         }
@@ -207,6 +229,16 @@ public sealed class InvestigationService(
         return await db.Cases.AsNoTracking()
             .Include(c => c.Decisions.OrderBy(d => d.DecidedAt))
             .SingleOrDefaultAsync(c => c.Id == caseId, ct);
+    }
+
+    /// <summary>Cases waiting for an analyst, the longest waiting first.</summary>
+    public async Task<List<InvestigationCase>> ListAwaitingApprovalAsync(CancellationToken ct)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        return await db.Cases.AsNoTracking()
+            .Where(c => c.Status == CaseStatus.AwaitingApproval && c.AwaitingSince != null)
+            .OrderBy(c => c.AwaitingSince)
+            .ToListAsync(ct);
     }
 
     public async Task<List<InvestigationCase>> ListCasesAsync(CancellationToken ct)

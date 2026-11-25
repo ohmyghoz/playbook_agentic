@@ -1,0 +1,72 @@
+@model InvestigationCase?
+@{
+    ViewData["Title"] = "Lab: approval dua panel";
+    var timeout = Surveillance.Web.Controllers.LabController.LabApprovalTimeoutMinutes;
+}
+
+<h1 class="h3">Approval: dua panel yang terhubung</h1>
+<p style="max-width: 48rem">
+    Kiri adalah sisi agent: narasi, tahap, dan panggilan data. Agent berhenti di tahap memo dan menunggu.
+    Kanan adalah sisi analis: ambil kasus, lalu setujui, minta revisi, atau tolak. Keputusan di kanan langsung
+    menggerakkan kiri. Kasus dari halaman ini kedaluwarsa setelah @timeout menit tanpa keputusan. Setelah itu,
+    aplikasi menghentikan agent dan mencatat alasannya. Urutan statusnya ada di <code>docs/APPROVAL-STATES.md</code>.
+</p>
+
+<form method="post" asp-action="StartForApproval" class="mb-3">
+    <button type="submit" class="btn btn-primary btn-sm">Mulai investigasi baru</button>
+    @if (Model is not null)
+    {
+        <a class="btn btn-link btn-sm" asp-controller="Investigation" asp-action="Audit" asp-route-id="@Model.Id" target="_blank">Garis waktu audit</a>
+        <a class="btn btn-link btn-sm" asp-controller="Approvals" asp-action="Index" target="_blank">Antrean approval</a>
+    }
+</form>
+
+@if (Model is { } c)
+{
+    var terminal = c.Status.IsTerminal() ? "true" : "false";
+    <div class="row g-3">
+        @foreach (var side in new[] { "agent", "analyst" })
+        {
+            <div class="col-lg-6">
+                <section class="card h-100" aria-label="@(side == "agent" ? "Sisi agent" : "Sisi analis")">
+                    <div class="card-header d-flex justify-content-between">
+                        <strong>@(side == "agent" ? "Sisi agent" : "Sisi analis")</strong>
+                    </div>
+                    <div class="card-body"
+                         data-agent-ui
+                         data-case-id="@c.Id"
+                         data-mode="live"
+                         data-terminal="@terminal"
+                         data-transport="sse"
+                         data-events-url="@Url.Action("Events", "Investigation", new { id = c.Id })"
+                         data-events-json-url="@Url.Action("EventsJson", "Investigation", new { id = c.Id })"
+                         data-approval-url="@Url.Action("Approval", "Investigation", new { id = c.Id })"
+                         data-stop-url="@Url.Action("Stop", "Investigation", new { id = c.Id })"
+                         data-claim-url="@Url.Action("Claim", "Investigation", new { id = c.Id })"
+                         data-release-url="@Url.Action("Release", "Investigation", new { id = c.Id })"
+                         data-preview-url-template="@Url.Action("ToolPreview", "Investigation", new { id = c.Id, toolCallId = "__call__" })"
+                         data-user="@User.Identity?.Name">
+                        <div class="mb-2"><span data-part="status" class="status">@CaseStatusText.Label(c.Status)</span> <span data-part="connection" class="small text-muted"></span></div>
+                        @if (side == "agent")
+                        {
+                            <partial name="Patterns/_StepProgress" />
+                            <partial name="Patterns/_Narrative" />
+                            <partial name="Patterns/_ThinkingIndicator" />
+                            <partial name="Patterns/_ToolCalls" />
+                        }
+                        else
+                        {
+                            <partial name="Patterns/_ErrorBanner" model="c.Id" />
+                            <partial name="Patterns/_CaseClaim" />
+                            <partial name="Patterns/_ApprovalCard" />
+                        }
+                    </div>
+                </section>
+            </div>
+        }
+    </div>
+}
+
+@section Scripts {
+    <partial name="Patterns/_AgentUiScripts" model="false" />
+}

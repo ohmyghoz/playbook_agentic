@@ -1,6 +1,7 @@
 // Pattern: approval card. approval_required shows the memo with three decisions (approve, revise,
 // reject; a comment is required for the last two). A newer draft replaces the pending card; the
-// card closes when submit_memo finishes or the run ends. Findings link to their evidence
+// card closes when submit_memo finishes or the run ends, and keeps the decision that closed it,
+// so the drafts above each other form the memo's version history. Findings link to their evidence
 // ([data-evidence-call], see evidence.js). Partial: Views/Shared/Patterns/_ApprovalCard.cshtml
 (function () {
     "use strict";
@@ -11,6 +12,7 @@
     };
     const evidenceText = { strong: "Kuat", moderate: "Sedang", weak: "Lemah", insufficient: "Tidak cukup" };
     const recommendationText = { escalate: "Eskalasi", monitor: "Pantau", close: "Tutup" };
+    const decisionText = { approve: "Disetujui", revise: "Revisi diminta", reject: "Ditolak", expire: "Kedaluwarsa" };
 
     AgentUi.register("approval-card", ctx => {
         const { el } = ctx.helpers;
@@ -18,12 +20,21 @@
         const template = ctx.part("approval-template");
         let pending = null;
         let submitCallId = null;
+        // Decisions already stored (rendered by the server), by approvalId, plus the ones made on this page.
+        const decisions = {};
+        for (const d of JSON.parse(ctx.data.decisions || "[]")) decisions[d.approvalId] = d;
 
         function resolve(text) {
             if (!pending) return;
             const form = pending.querySelector(".approval-form");
-            if (form) form.querySelectorAll("button, input, textarea").forEach(x => (x.disabled = true));
-            pending.querySelector(".approval-state").textContent = text || "Selesai";
+            if (form) {
+                form.dataset.closed = "true";
+                form.querySelectorAll("button, input, textarea").forEach(x => (x.disabled = true));
+            }
+            const d = decisions[pending.dataset.approvalId];
+            pending.querySelector(".approval-state").textContent = d
+                ? (decisionText[d.decision] || d.decision) + " oleh " + d.decidedBy + (d.comment ? ": \u201C" + d.comment + "\u201D" : "")
+                : text || "Selesai";
             pending = null;
         }
 
@@ -84,6 +95,7 @@
                 const body = await response.json().catch(() => ({}));
                 message.className = "approval-message small mt-2 " + (response.ok ? "text-success" : "text-danger");
                 message.textContent = body.message || (response.ok ? "Keputusan tersimpan." : "Keputusan belum tersimpan. Coba lagi.");
+                if (response.ok) decisions[approvalId] = { decision, comment: String(data.get("Comment") || "").trim(), decidedBy: ctx.data.user || "Anda" };
                 if (!response.ok) form.querySelectorAll("button").forEach(b => (b.disabled = false));
             } catch {
                 message.className = "approval-message small mt-2 text-danger";
@@ -91,6 +103,16 @@
                 form.querySelectorAll("button").forEach(b => (b.disabled = false));
             }
         }
+
+        // error-banner.js reports what the application decided after a done(cancelled), e.g. an expiry.
+        let lastCard = null;
+        ctx.root.addEventListener("agentui:case-state", e => {
+            const d = e.detail.decision;
+            if (lastCard && d && d.approvalId === lastCard.dataset.approvalId) {
+                lastCard.querySelector(".approval-state").textContent =
+                    (decisionText[d.decision] || d.decision) + " oleh " + d.decidedBy;
+            }
+        });
 
         return {
             onEvent(event) {
@@ -100,6 +122,7 @@
                 } else if (event.type === "approval_required") {
                     resolve("Diganti oleh draf berikutnya.");
                     const card = template.content.firstElementChild.cloneNode(true);
+                    card.dataset.approvalId = p.approvalId;
                     card.querySelector(".approval-title").textContent = p.revision === 0 ? "Draf memo" : "Draf memo, revisi ke-" + p.revision;
                     card.querySelector(".approval-state").textContent = "Menunggu keputusan";
                     renderMemo(card.querySelector(".memo"), p.memo);
@@ -107,6 +130,7 @@
                     if (ctx.interactive) form.addEventListener("submit", e => submit(e, form, p.approvalId));
                     else form.remove();
                     pending = card;
+                    lastCard = card;
                     list.append(card);
                     card.scrollIntoView({ behavior: "smooth", block: "nearest" });
                 } else if (event.type === "tool_call_finished" && p.toolCallId === submitCallId) {

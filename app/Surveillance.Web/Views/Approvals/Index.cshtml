@@ -1,0 +1,73 @@
+@model ApprovalQueueViewModel
+@{
+    ViewData["Title"] = "Antrean approval";
+    var supervisor = User.IsInRole(Surveillance.Web.Auth.Roles.Supervisor);
+    var wib = TimeZoneInfo.FindSystemTimeZoneById("Asia/Jakarta");
+}
+
+<h1 class="h3">Antrean approval</h1>
+<p class="text-muted">
+    @Model.Rows.Count draf menunggu keputusan, yang paling lama menunggu di atas.
+    Ambil kasus sebelum memutuskan supaya analis lain tahu kasus itu sedang ditelaah.
+</p>
+
+@if (Model.Assigned is not null)
+{
+    <div class="alert alert-success py-2" role="status">@Model.Assigned</div>
+}
+
+@if (Model.Rows.Count == 0)
+{
+    <p>Tidak ada draf yang menunggu keputusan.</p>
+}
+else
+{
+    <table class="table table-sm align-middle">
+        <thead>
+            <tr>
+                <th>Kasus</th>
+                <th>Menunggu</th>
+                <th>Batas waktu</th>
+                <th>Dipegang</th>
+                @if (supervisor)
+                {
+                    <th>Alihkan ke</th>
+                }
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var row in Model.Rows)
+            {
+                <tr class="@(row.NearExpiry ? "table-warning" : "")">
+                    <td>
+                        <a asp-controller="Investigation" asp-action="Details" asp-route-id="@row.Case.Id">@row.Case.Symbol · @row.Case.AnomalyDate.ToString("yyyy-MM-dd")</a>
+                        <div class="small text-muted">@row.Case.Provider · @row.Case.Id.ToString()[..8]</div>
+                    </td>
+                    <td>@DurationText.Of(row.Waiting)</td>
+                    <td>
+                        @TimeZoneInfo.ConvertTimeFromUtc(row.Deadline, wib).ToString("dd-MM-yyyy HH.mm") WIB
+                        @if (row.NearExpiry)
+                        {
+                            <span class="badge text-bg-warning">Hampir kedaluwarsa</span>
+                        }
+                    </td>
+                    <td>@(row.Claim.Holder ?? "–")</td>
+                    @if (supervisor)
+                    {
+                        <td>
+                            <form asp-action="Assign" asp-route-id="@row.Case.Id" method="post" class="d-flex gap-1">
+                                <select name="userName" class="form-select form-select-sm w-auto" aria-label="Analis tujuan">
+                                    @foreach (var a in Model.Analysts)
+                                    {
+                                        <option value="@a.UserName">@a.DisplayName</option>
+                                    }
+                                </select>
+                                <button type="submit" class="btn btn-sm btn-outline-primary">Alihkan</button>
+                            </form>
+                        </td>
+                    }
+                </tr>
+            }
+        </tbody>
+    </table>
+}

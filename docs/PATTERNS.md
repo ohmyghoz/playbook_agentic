@@ -1,6 +1,6 @@
 # Katalog pola UI agent
 
-Halaman investigasi dirakit dari delapan pola. Setiap pola punya satu partial
+Halaman investigasi dirakit dari sembilan pola. Setiap pola punya satu partial
 view dan satu modul JavaScript dengan nama yang sama, sehingga bisa dirujuk per
 bab. Setiap pola juga bisa diperagakan sendiri di `/lab/patterns` dengan agent
 tiruan.
@@ -29,6 +29,7 @@ tiruan.
 | Tombol hentikan | `done`, `error` (untuk menyembunyikan tombol) | `_StopButton.cshtml` | `stop-button.js` | `POST /investigations/{id}/stop`. Adapter menutup tool call yang terbuka lalu memancarkan `done(cancelled)`. Teks bantuan menyatakan bahwa data yang sudah masuk tetap tersimpan. |
 | Banner galat dan akhir run | `error` (`code`, `message`, `retryable`), `done` | `_ErrorBanner.cshtml` | `error-banner.js` | Adapter mengisi `message` dalam bahasa Indonesia dan `retryable`. Galat yang bisa diulang diberi tombol mulai ulang. Galat lain diberi langkah berikutnya per `code`. |
 | Kartu approval | `approval_required`, `tool_call_started`/`finished` untuk `submit_memo`, `done`, `error` | `_ApprovalCard.cshtml` | `approval-card.js` | `POST /investigations/{id}/approval`. Keputusan tercatat atas nama pengguna yang login, dan dua keputusan bersamaan ditolak dengan 409 (Tahap 7). |
+| Pengambilan kasus | `approval_required`, `tool_call_finished`, `done`, `error`; status dari `GET /investigations/{id}/claim` | `_CaseClaim.cshtml` | `case-claim.js` | Kolom pegangan di kasus dan `CaseClaims.cs`. Tombol keputusan aktif hanya untuk pemegang. Server menolak keputusan dari analis lain selama pegangan aktif. Setelah `done(cancelled)`, endpoint yang sama memberi tahu bila kasus sebenarnya kedaluwarsa (Tahap 11). |
 
 ## Peragaan per pola
 

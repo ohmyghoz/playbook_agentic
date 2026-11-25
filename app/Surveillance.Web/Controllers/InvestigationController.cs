@@ -13,8 +13,13 @@ namespace Surveillance.Web.Controllers;
 public class InvestigationController(
     InvestigationService investigations,
     AgentSelection selection,
+    CaseClaims claims,
+    AuditTimeline audit,
     IOptions<TransportOptions> transport) : Controller
 {
+    private string UserName => User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)!.Value;
+    private string DisplayName => User.Identity!.Name!;
+
     [HttpGet("")]
     public async Task<IActionResult> Index(CancellationToken ct)
     {
@@ -130,9 +135,83 @@ public class InvestigationController(
             DecisionResult.CaseNotFound => NotFound(new { message = "Kasus tidak ditemukan." }),
             DecisionResult.CommentRequired => BadRequest(new { message = "Tulis komentar untuk analis agent sebelum meminta revisi atau menolak." }),
             DecisionResult.StaleApproval => Conflict(new { message = "Draf memo ini sudah diganti. Muat ulang halaman untuk melihat draf terbaru." }),
+            DecisionResult.ClaimedByOther => Conflict(new { message = $"Kasus ini sedang dipegang oleh {outcome.DecidedBy}. Minta supervisor mengalihkannya bila perlu." }),
             DecisionResult.AlreadyDecided => Conflict(new { message = $"Kasus ini sudah diputuskan oleh {outcome.DecidedBy ?? "analis lain"}. Muat ulang halaman untuk melihat keputusannya." }),
             _ => Conflict(new { message = "Investigasi ini tidak sedang menunggu keputusan." }),
         };
+    }
+
+    /// <summary>Takes the case for review, or renews the caller's claim (the page calls this on activity).</summary>
+    [HttpPost("{id:guid}/claim")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> Claim(Guid id, CancellationToken ct)
+    {
+        var outcome = await claims.ClaimAsync(id, UserName, DisplayName, ct);
+        return outcome.Result switch
+        {
+            ClaimResult.Claimed => await ClaimJson(id, "Kasus ini Anda pegang. Analis lain tidak bisa memutuskannya.", ct),
+            ClaimResult.CaseNotFound => NotFound(new { message = "Kasus tidak ditemukan." }),
+            ClaimResult.HeldByOther => Conflict(new { message = $"Kasus ini sedang dipegang oleh {outcome.Holder}." }),
+            _ => Conflict(new { message = "Kasus ini tidak sedang menunggu keputusan." }),
+        };
+    }
+
+    [HttpPost("{id:guid}/release")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> Release(Guid id, CancellationToken ct)
+    {
+        await claims.ReleaseAsync(id, DisplayName, ct);
+        return await ClaimJson(id, "Kasus dilepas. Analis lain bisa mengambilnya.", ct);
+    }
+
+    [HttpGet("{id:guid}/claim")]
+    public Task<IActionResult> ClaimState(Guid id, CancellationToken ct) => ClaimJson(id, null, ct);
+
+    /// <summary>
+    /// The case as the application sees it: who holds it, its status and the latest decision. The
+    /// page asks after done(cancelled), because the agent cannot tell a stop from an expiry.
+    /// </summary>
+    private async Task<IActionResult> ClaimJson(Guid id, string? message, CancellationToken ct)
+    {
+        var state = await claims.GetAsync(id, ct);
+        var @case = state is null ? null : await investigations.GetCaseAsync(id, ct);
+        if (state is null || @case is null)
+        {
+            return NotFound(new { message = "Kasus tidak ditemukan." });
+        }
+
+        var last = @case.Decisions.LastOrDefault();
+        return Ok(new
+        {
+            holder = state.Holder,
+            mine = state.Holder == DisplayName,
+            expiresAt = state.ExpiresAt,
+            status = @case.Status.ToString().ToLowerInvariant(),
+            statusLabel = CaseStatusText.Label(@case.Status),
+            decision = last is null ? null : new { last.ApprovalId, last.Decision, last.DecidedBy, last.Comment },
+            message,
+        });
+    }
+
+    /// <summary>Who did what and when: agent events, analyst decisions and application actions.</summary>
+    [HttpGet("{id:guid}/audit")]
+    public async Task<IActionResult> Audit(Guid id, CancellationToken ct)
+    {
+        var @case = await investigations.GetCaseAsync(id, ct);
+        var entries = await audit.BuildAsync(id, ct);
+        return @case is null || entries is null ? NotFound() : View(new AuditViewModel { Case = @case, Entries = entries });
+    }
+
+    [HttpGet("{id:guid}/audit.json")]
+    public async Task<IActionResult> AuditJson(Guid id, CancellationToken ct)
+    {
+        var entries = await audit.BuildAsync(id, ct);
+        if (entries is null)
+        {
+            return NotFound();
+        }
+
+        return File(System.Text.Encoding.UTF8.GetBytes(AuditTimeline.ToJson(id, entries)), "application/json", $"audit-{id:N}.json");
     }
 
     [HttpPost("{id:guid}/stop")]

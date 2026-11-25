@@ -20,6 +20,7 @@ public class CaseStateMachineTests
         (CaseStatus.AwaitingApproval, CaseStatus.Running),
         (CaseStatus.AwaitingApproval, CaseStatus.Cancelled),
         (CaseStatus.AwaitingApproval, CaseStatus.Failed),
+        (CaseStatus.AwaitingApproval, CaseStatus.Expired),
         (CaseStatus.Starting, CaseStatus.Starting),
     ];
 
@@ -59,6 +60,7 @@ public class CaseStateMachineTests
     [InlineData(CaseStatus.Rejected)]
     [InlineData(CaseStatus.Cancelled)]
     [InlineData(CaseStatus.Failed)]
+    [InlineData(CaseStatus.Expired)]
     public void Final_statuses_never_change(CaseStatus final)
     {
         Assert.All(Enum.GetValues<CaseStatus>(), to => Assert.False(CaseStateMachine.CanMove(final, to)));

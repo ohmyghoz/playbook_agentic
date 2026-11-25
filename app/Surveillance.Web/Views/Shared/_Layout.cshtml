@@ -17,6 +17,9 @@
                     <li class="nav-item">
                         <a class="nav-link text-dark" asp-controller="Investigation" asp-action="Index">Investigasi UMA</a>
                     </li>
+                    <li class="nav-item">
+                        <a class="nav-link text-dark" asp-controller="Approvals" asp-action="Index">Antrean approval</a>
+                    </li>
                     @if (User.IsInRole(Surveillance.Web.Auth.Roles.Supervisor))
                     {
                         <li class="nav-item">

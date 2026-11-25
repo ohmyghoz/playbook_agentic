@@ -110,6 +110,25 @@ public class LabController(InvestigationService investigations, IConfiguration c
         });
     }
 
+    /// <summary>Lab cases expire after this many minutes, so the expiry can be watched (Approval:ExpiryHours elsewhere).</summary>
+    public const int LabApprovalTimeoutMinutes = 2;
+
+    /// <summary>Two linked panels for one case: the agent waiting on the left, the analyst deciding on the right.</summary>
+    [HttpGet("approval")]
+    public async Task<IActionResult> Approval(Guid? caseId, CancellationToken ct)
+    {
+        var @case = caseId is { } id ? await investigations.GetCaseAsync(id, ct) : null;
+        return View(@case);
+    }
+
+    [HttpPost("approval/start")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> StartForApproval(CancellationToken ct)
+    {
+        var caseId = await investigations.StartAsync(LabInput("ASII", null) with { ApprovalTimeoutMinutes = LabApprovalTimeoutMinutes }, ct);
+        return RedirectToAction(nameof(Approval), new { caseId });
+    }
+
     private static StartInvestigation LabInput(string symbol, string? notes) =>
         new(symbol, new DateOnly(2026, 11, 24), TriggerKind.Volume, "Volume di atas 1,1x rata-rata 3 bulan (demo Lab)",
             2.2, 235_635_300, 210_424_313, 1.12, notes);

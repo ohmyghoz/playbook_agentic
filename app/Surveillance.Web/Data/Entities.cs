@@ -9,12 +9,15 @@ public enum CaseStatus
     Rejected,
     Cancelled,
     Failed,
+
+    /// <summary>No analyst decided before the approval deadline; the application stopped the run.</summary>
+    Expired,
 }
 
 public static class CaseStatusExtensions
 {
     public static bool IsTerminal(this CaseStatus status) =>
-        status is CaseStatus.Approved or CaseStatus.Rejected or CaseStatus.Cancelled or CaseStatus.Failed;
+        status is CaseStatus.Approved or CaseStatus.Rejected or CaseStatus.Cancelled or CaseStatus.Failed or CaseStatus.Expired;
 }
 
 /// <summary>One investigation of one stock on one trading day. The application's source of truth.</summary>
@@ -32,6 +35,20 @@ public class InvestigationCase
     public string? RunId { get; set; }
     public CaseStatus Status { get; set; }
     public long LastSequence { get; set; }
+
+    /// <summary>When the current draft started waiting for a decision; null while not awaiting approval.</summary>
+    public DateTime? AwaitingSince { get; set; }
+
+    /// <summary>Approval deadline for this case in minutes; null uses Approval:ExpiryHours. Lab demos set 2.</summary>
+    public int? ApprovalTimeoutMinutes { get; set; }
+
+    /// <summary>The analyst holding the case (display name, as in DecidedBy) and the account behind it.</summary>
+    public string? ClaimedBy { get; set; }
+    public string? ClaimedByUser { get; set; }
+
+    /// <summary>Last activity of the holder; the claim lapses after Approval:ClaimTimeoutMinutes without activity.</summary>
+    public DateTime? ClaimActivityAt { get; set; }
+
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
 
@@ -65,6 +82,20 @@ public class ToolResultPreview
     public required string ToolName { get; set; }
     public required string Preview { get; set; }
     public DateTime CreatedAt { get; set; }
+}
+
+/// <summary>
+/// Something a person or the application did to a case outside the agent's events: claim,
+/// release, assign, decide, expire. Together with the events it forms the audit timeline.
+/// </summary>
+public class CaseAuditRecord
+{
+    public long Id { get; set; }
+    public Guid CaseId { get; set; }
+    public DateTime At { get; set; }
+    public required string Actor { get; set; }
+    public required string Action { get; set; }
+    public string? Detail { get; set; }
 }
 
 /// <summary>An application setting changed from the settings page, such as the active agent solution.</summary>

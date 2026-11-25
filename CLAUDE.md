@@ -399,7 +399,7 @@ Selesai jika: contract test kedua use case lulus atau setiap kegagalan dijelaska
 - [x] Tahap 8: evolusi kontrak untuk progres dan bukti
 - [x] Tahap 9: transport (Bab 10)
 - [x] Tahap 10: pola UI (Bab 11)
-- [ ] Tahap 11: approval (Bab 12)
+- [x] Tahap 11: approval (Bab 12)
 - [ ] Tahap 12: durabilitas (Bab 13)
 - [ ] Tahap 13: use case 2 di aplikasi, dengan agent tiruan
 - [ ] Tahap 14: use case 2 di tiga solusi
@@ -464,4 +464,7 @@ Tambahkan satu baris per keputusan: tanggal, keputusan, alasan singkat.
 - 2026-11-25: Tahap 9: `/lab/sync` memakai kebijakan request timeout `lab-sync` (`Lab:SyncTimeoutSeconds`, bawaan 20) supaya test bisa memakai 2 detik. Batas waktu ini tidak berlaku saat debugger terpasang. Halaman `/lab` dijaga `LabAvailableFilter` (404 bila solusi aktif bukan fake).
 - 2026-11-25: Tahap 10: pola UI dipasang lewat host `agent-ui.js`; setiap pola (`wwwroot/js/patterns/*.js`) mendaftar dengan `AgentUi.register` dan mencari elemennya lewat `data-part` di dalam root `[data-agent-ui]`, bukan `id` global, supaya satu halaman bisa memuat banyak root (`/lab/patterns`). Pola saling terhubung hanya lewat atribut DOM (misalnya `data-evidence-call`). Tanpa bundler; skrip dimuat lewat partial `_AgentUiScripts.cshtml`.
 - 2026-11-25: Tahap 10: `/lab/patterns` memakai polling tiap 1 detik. Ditemukan saat uji browser: delapan koneksi SSE menghabiskan batas enam koneksi HTTP/1.1 per host, sehingga POST Hentikan tidak pernah terkirim. Dicatat di `docs/TRANSPORTS.md`. Skenario fake baru `scenario=silent_30s`.
+- 2026-11-25: Tahap 11: status baru `Expired` (dari `AwaitingApproval`), supaya approval yang lewat batas berakhir dengan status yang jelas. `ApprovalExpiryService` memakai update bersyarat pada `AwaitingSince` yang dibaca, mencatat keputusan `expire` oleh "Sistem", lalu menghentikan run lewat jalur tombol Hentikan; `done(cancelled)` dari agent disimpan tanpa mengubah status. Halaman membedakan berhenti dan kedaluwarsa dengan menanyakan status kasus ke `GET /investigations/{id}/claim` setelah `done(cancelled)`.
+- 2026-11-25: Tahap 11: pegangan kasus disimpan di kolom kasus (`ClaimedBy`, `ClaimedByUser`, `ClaimActivityAt`), dibandingkan dengan nama tampilan (sama dengan `DecidedBy`). Pegangan aktif menolak keputusan analis lain; kasus tanpa pegangan tetap bisa diputuskan supaya keputusan tidak hilang. Keputusan dan kedaluwarsa mengosongkan pegangan, sehingga draf revisi harus diambil lagi. Tindakan ambil, lepas, alihkan, dan kedaluwarsa tercatat di tabel `CaseAuditRecords`.
+- 2026-11-25: Tahap 11: batas waktu approval dihitung dari `AwaitingSince`, yang diisi `RunPump` setiap kali draf mulai menunggu. Kasus dari `/lab/approval` memakai `ApprovalTimeoutMinutes = 2`.
 - 2026-11-24: Catatan keamanan: server Azure SQL punya aturan firewall `AllowAll-Experiment` (0.0.0.0–255.255.255.255). Belum diubah; sebaiknya dihapus dan diganti aturan per IP.

@@ -118,6 +118,7 @@ public static class CaseStatusText
         CaseStatus.Rejected => "Memo ditolak",
         CaseStatus.Cancelled => "Dihentikan",
         CaseStatus.Failed => "Gagal",
+        CaseStatus.Expired => "Kedaluwarsa",
         _ => status.ToString(),
     };
 
@@ -126,6 +127,7 @@ public static class CaseStatusText
         "approve" => "Setuju",
         "revise" => "Minta revisi",
         "reject" => "Tolak",
+        "expire" => "Kedaluwarsa",
         _ => decision,
     };
 }
@@ -142,4 +144,31 @@ public class LabTransportViewModel
 {
     public List<InvestigationCase> Cases { get; init; } = [];
     public Guid? CaseId { get; init; }
+}
+
+public sealed record ApprovalQueueRow(InvestigationCase Case, TimeSpan Waiting, DateTime Deadline, bool NearExpiry, ClaimState Claim);
+
+public class ApprovalQueueViewModel
+{
+    public List<ApprovalQueueRow> Rows { get; init; } = [];
+    public List<Surveillance.Web.Auth.DemoUser> Analysts { get; init; } = [];
+    public string? Assigned { get; init; }
+}
+
+public class AuditViewModel
+{
+    public required InvestigationCase Case { get; init; }
+    public List<AuditEntry> Entries { get; init; } = [];
+}
+
+public static class DurationText
+{
+    /// <summary>"2 jam 5 menit", "3 menit", "40 detik".</summary>
+    public static string Of(TimeSpan t)
+    {
+        if (t < TimeSpan.Zero) t = TimeSpan.Zero;
+        if (t.TotalHours >= 1) return $"{(int)t.TotalHours} jam {t.Minutes} menit";
+        if (t.TotalMinutes >= 1) return $"{(int)t.TotalMinutes} menit";
+        return $"{t.Seconds} detik";
+    }
 }

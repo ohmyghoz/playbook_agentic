@@ -1,0 +1,34 @@
+@model AuditViewModel
+@{
+    var c = Model.Case;
+    ViewData["Title"] = $"Audit {c.Symbol}";
+    var wib = TimeZoneInfo.FindSystemTimeZoneById("Asia/Jakarta");
+    var sourceText = new Dictionary<string, string> { ["agent"] = "Agent", ["analyst"] = "Analis", ["application"] = "Aplikasi" };
+}
+
+<h1 class="h3">Garis waktu audit: @c.Symbol · @c.AnomalyDate.ToString("yyyy-MM-dd")</h1>
+<p class="text-muted">
+    Event agent, keputusan analis, dan tindakan aplikasi (ambil, lepas, alihkan, kedaluwarsa) dalam satu urutan waktu.
+    Status sekarang: <strong>@CaseStatusText.Label(c.Status)</strong>.
+</p>
+<p class="d-flex gap-2">
+    <a class="btn btn-sm btn-outline-secondary" asp-action="Details" asp-route-id="@c.Id">Kembali ke investigasi</a>
+    <a class="btn btn-sm btn-outline-primary" asp-action="AuditJson" asp-route-id="@c.Id">Ekspor JSON</a>
+</p>
+
+<table class="table table-sm audit">
+    <thead>
+        <tr><th>Waktu (WIB)</th><th>Pelaku</th><th>Tindakan</th><th>Rincian</th></tr>
+    </thead>
+    <tbody>
+        @foreach (var e in Model.Entries)
+        {
+            <tr class="audit-@e.Source">
+                <td class="text-nowrap">@TimeZoneInfo.ConvertTimeFromUtc(e.At, wib).ToString("dd-MM-yyyy HH.mm.ss")</td>
+                <td><span class="badge text-bg-light">@sourceText[e.Source]</span> @e.Actor</td>
+                <td><code>@e.Action</code>@(e.Sequence is { } s ? $" #{s}" : "")</td>
+                <td class="small">@e.Detail</td>
+            </tr>
+        }
+    </tbody>
+</table>

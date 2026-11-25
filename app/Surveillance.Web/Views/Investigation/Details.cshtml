@@ -20,7 +20,11 @@
      data-preview-url-template="@Url.Action("ToolPreview", new { id = c.Id, toolCallId = "__call__" })"
      data-transport="@Model.Transport"
      data-hub-url="@Url.Content("~" + Surveillance.Web.Hubs.InvestigationHub.Path)"
-     data-polling-interval="@TransportSettings.Value.PollingIntervalMilliseconds">
+     data-polling-interval="@TransportSettings.Value.PollingIntervalMilliseconds"
+     data-claim-url="@Url.Action("Claim", new { id = c.Id })"
+     data-release-url="@Url.Action("Release", new { id = c.Id })"
+     data-user="@User.Identity?.Name"
+     data-decisions="@System.Text.Json.JsonSerializer.Serialize(c.Decisions.Select(d => new { approvalId = d.ApprovalId, decision = d.Decision, comment = d.Comment, decidedBy = d.DecidedBy }))">
 
     @Html.AntiForgeryToken()
 
@@ -29,6 +33,7 @@
             <h1 class="h3 mb-1">@c.Symbol · @c.AnomalyDate.ToString("d MMMM yyyy", id)</h1>
             <div class="text-muted small">
                 Pemicu: @Model.Trigger.Rule · Agent: @c.Provider · Kasus @c.Id.ToString()[..8]
+                · <a asp-action="Audit" asp-route-id="@c.Id">Garis waktu audit</a>
             </div>
         </div>
         <div class="d-flex align-items-start gap-2">
@@ -69,6 +74,7 @@
         <div class="col-lg-7">
             <partial name="Patterns/_Narrative" />
             <partial name="Patterns/_ThinkingIndicator" />
+            <partial name="Patterns/_CaseClaim" />
             <partial name="Patterns/_ApprovalCard" />
         </div>
 
