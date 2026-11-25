@@ -1,6 +1,6 @@
 # Katalog pola UI agent
 
-Halaman investigasi dirakit dari sembilan pola. Setiap pola punya satu partial
+Halaman investigasi dirakit dari sembilan pola. Halaman job deteksi pola (`/jobs/{id}`) memakai pola yang sama, ditambah panel worker. Setiap pola punya satu partial
 view dan satu modul JavaScript dengan nama yang sama, sehingga bisa dirujuk per
 bab. Setiap pola juga bisa diperagakan sendiri di `/lab/patterns` dengan agent
 tiruan.
@@ -30,6 +30,7 @@ tiruan.
 | Banner galat dan akhir run | `error` (`code`, `message`, `retryable`), `done` | `_ErrorBanner.cshtml` | `error-banner.js` | Adapter mengisi `message` dalam bahasa Indonesia dan `retryable`. Galat yang bisa diulang diberi tombol mulai ulang. Galat lain diberi langkah berikutnya per `code`. |
 | Kartu approval | `approval_required`, `tool_call_started`/`finished` untuk `submit_memo`, `done`, `error` | `_ApprovalCard.cshtml` | `approval-card.js` | `POST /investigations/{id}/approval`. Keputusan tercatat atas nama pengguna yang login, dan dua keputusan bersamaan ditolak dengan 409 (Tahap 7). |
 | Pengambilan kasus | `approval_required`, `tool_call_finished`, `done`, `error`; status dari `GET /investigations/{id}/claim` | `_CaseClaim.cshtml` | `case-claim.js` | Kolom pegangan di kasus dan `CaseClaims.cs`. Tombol keputusan aktif hanya untuk pemegang. Server menolak keputusan dari analis lain selama pegangan aktif. Setelah `done(cancelled)`, endpoint yang sama memberi tahu bila kasus sebenarnya kedaluwarsa (Tahap 11). |
+| Panel worker | `worker_started`, `worker_finished`, `agentName` di setiap event, `tool_call_started`/`finished` milik worker | `_WorkerPanels.cshtml` | `worker-panels.js` | Butuh CHANGE-002. Satu panel per `workerId` dengan peran, target, kedalaman, tool call, ringkasan, dan jejak baru. Transport SSE harus mendaftarkan kedua tipe event baru (`SseTransportCatalogTests`). |
 
 ## Peragaan per pola
 

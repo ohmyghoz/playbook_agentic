@@ -53,3 +53,21 @@ public class RepositoryBoundaryTests
         Assert.Empty(offenders);
     }
 }
+
+/// <summary>
+/// EventSource only calls listeners for registered types while Last-Event-ID moves past the others,
+/// so a catalog type missing from the SSE transport is lost for good (found in Tahap 13, CHANGE-002).
+/// </summary>
+public class SseTransportCatalogTests
+{
+    [Fact]
+    public void Sse_transport_listens_to_every_event_type_in_the_catalog()
+    {
+        using var schema = System.Text.Json.JsonDocument.Parse(File.ReadAllText(RepoPaths.Contracts("events.schema.json")));
+        var types = schema.RootElement.GetProperty("properties").GetProperty("type").GetProperty("enum")
+            .EnumerateArray().Select(t => t.GetString()!).ToList();
+        var transport = File.ReadAllText(Path.Combine(RepoPaths.Root, "app", "Surveillance.Web", "wwwroot", "js", "transports", "transport-sse.js"));
+
+        Assert.All(types, t => Assert.Contains($"\"{t}\"", transport));
+    }
+}

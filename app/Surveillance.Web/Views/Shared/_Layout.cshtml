@@ -20,6 +20,16 @@
                     <li class="nav-item">
                         <a class="nav-link text-dark" asp-controller="Approvals" asp-action="Index">Antrean approval</a>
                     </li>
+                    @if (User.Identity?.IsAuthenticated == true)
+                    {
+                        <li class="nav-item">
+                            <a id="jobs-nav" class="nav-link text-dark" asp-controller="Jobs" asp-action="Index"
+                               data-badge-url="@Url.Action("Badge", "Jobs")"
+                               data-hub-url="@Url.Content("~" + Surveillance.Web.Hubs.InvestigationHub.Path)">
+                                Deteksi pola <span id="jobs-badge" class="badge text-bg-warning d-none"></span>
+                            </a>
+                        </li>
+                    }
                     @if (User.IsInRole(Surveillance.Web.Auth.Roles.Supervisor))
                     {
                         <li class="nav-item">
@@ -48,6 +58,16 @@
             Hasil agent adalah indikasi untuk ditelaah analis, bukan kesimpulan pelanggaran.
         </div>
     </footer>
+    @if (User.Identity?.IsAuthenticated == true)
+    {
+        <div id="job-notice" class="job-notice alert alert-info shadow d-none" role="status" aria-live="polite">
+            <span data-part="notice-text"></span>
+            <a class="ms-1">Buka job</a>
+            <button type="button" class="btn-close btn-sm ms-2" aria-label="Tutup pemberitahuan"></button>
+        </div>
+        <script src="~/lib/microsoft-signalr/signalr.min.js"></script>
+        <script src="~/js/job-notifications.js" asp-append-version="true"></script>
+    }
     <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
     @await RenderSectionAsync("Scripts", required: false)
 </body>

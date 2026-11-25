@@ -1,0 +1,88 @@
+@model JobDetailsViewModel
+@inject Microsoft.Extensions.Options.IOptions<Surveillance.Web.Investigations.TransportOptions> TransportSettings
+@{
+    var c = Model.Job;
+    ViewData["Title"] = "Job deteksi pola";
+    var terminal = c.Status.IsTerminal();
+    var live = !terminal;
+    var id = new System.Globalization.CultureInfo("id-ID");
+    var screened = Model.Screened;
+}
+
+@* Same patterns as the investigation page, plus one panel per worker (docs/PATTERNS.md). *@
+<div id="job" data-agent-ui data-kind="job"
+     data-case-id="@c.Id"
+     data-mode="live"
+     data-terminal="@(terminal ? "true" : "false")"
+     data-events-url="@Url.Action("Events", "Investigation", new { id = c.Id })"
+     data-events-json-url="@Url.Action("EventsJson", "Investigation", new { id = c.Id })"
+     data-approval-url="@Url.Action("Approval", "Investigation", new { id = c.Id })"
+     data-stop-url="@Url.Action("Stop", "Investigation", new { id = c.Id })"
+     data-claim-url="@Url.Action("Claim", "Investigation", new { id = c.Id })"
+     data-release-url="@Url.Action("Release", "Investigation", new { id = c.Id })"
+     data-preview-url-template="@Url.Action("ToolPreview", "Investigation", new { id = c.Id, toolCallId = "__call__" })"
+     data-transport="@Model.Transport"
+     data-polling-interval="@TransportSettings.Value.PollingIntervalMilliseconds"
+     data-user="@User.Identity?.Name"
+     data-decisions="@System.Text.Json.JsonSerializer.Serialize(c.Decisions.Select(d => new { approvalId = d.ApprovalId, decision = d.Decision, comment = d.Comment, decidedBy = d.DecidedBy }))">
+
+    @Html.AntiForgeryToken()
+
+    <div class="d-flex flex-wrap align-items-start justify-content-between gap-2 mb-3">
+        <div>
+            <h1 class="h3 mb-1">Job deteksi pola</h1>
+            <div class="text-muted small">
+                Dimulai oleh @(c.StartedBy ?? "-") · Agent: @c.Provider · Job @c.Id.ToString()[..8]
+                · <a asp-controller="Investigation" asp-action="Audit" asp-route-id="@c.Id">Garis waktu audit</a>
+            </div>
+        </div>
+        <div class="d-flex align-items-start gap-2">
+            <span data-part="status" class="status status-@c.Status.ToString().ToLowerInvariant()" aria-live="polite">@CaseStatusText.Label(c.Status, job: true)</span>
+            <span data-part="connection" class="small text-muted" aria-live="polite"></span>
+            @if (live)
+            {
+                <partial name="Patterns/_StopButton" />
+            }
+        </div>
+    </div>
+    @if (live)
+    {
+        <p class="small text-muted">Job tetap berjalan di server walau halaman ini ditutup. Anda akan diberi tahu saat laporannya siap.</p>
+    }
+
+    @if (screened is not null)
+    {
+        <details class="mb-3">
+            <summary class="small">Hasil penyaringan awal: @screened.Candidates.Count kandidat, @screened.WindowStart.ToString("d MMMM", id) sampai @screened.WindowEnd.ToString("d MMMM yyyy", id)</summary>
+            <ul class="small mt-2">
+                @foreach (var k in screened.Candidates)
+                {
+                    <li><strong>@k.Symbol</strong>: @k.Reason</li>
+                }
+            </ul>
+        </details>
+    }
+    else if (!terminal)
+    {
+        <p class="small">Menyaring kandidat dari data pasar…</p>
+    }
+
+    <partial name="Patterns/_ErrorBanner" model="c.Id" />
+
+    <div class="row g-4">
+        <div class="col-lg-7">
+            <partial name="Patterns/_WorkerPanels" />
+            <partial name="Patterns/_CaseClaim" />
+            <partial name="Patterns/_ApprovalCard" />
+        </div>
+        <div class="col-lg-5">
+            <partial name="Patterns/_Narrative" />
+            <partial name="Patterns/_ThinkingIndicator" />
+            <partial name="Patterns/_Evidence" />
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <partial name="Patterns/_AgentUiScripts" model="@(Model.Transport == "signalr")" />
+}

@@ -23,6 +23,11 @@
       "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,7})?Z$",
       "description": "Waktu event dibuat, RFC 3339 dalam UTC (akhiran Z)."
     },
+    "agentName": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Agent yang memancarkan event pada use case multi-agent (CHANGE-002): orchestrator, atau id worker seperti saham-BBCA. Tidak dipakai pada investigator UMA."
+    },
     "type": {
       "enum": [
         "run_started",
@@ -31,6 +36,8 @@
         "tool_call_started",
         "tool_call_finished",
         "approval_required",
+        "worker_started",
+        "worker_finished",
         "done",
         "error"
       ]
@@ -63,6 +70,14 @@
       "then": { "properties": { "payload": { "$ref": "#/$defs/ApprovalRequiredPayload" } } }
     },
     {
+      "if": { "properties": { "type": { "const": "worker_started" } } },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/WorkerStartedPayload" } } }
+    },
+    {
+      "if": { "properties": { "type": { "const": "worker_finished" } } },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/WorkerFinishedPayload" } } }
+    },
+    {
       "if": { "properties": { "type": { "const": "done" } } },
       "then": { "properties": { "payload": { "$ref": "#/$defs/DonePayload" } } }
     },
@@ -83,14 +98,60 @@
       "pattern": "^[A-Z]{4}$",
       "description": "Kode saham BEI, empat huruf kapital, mis. BBCA."
     },
+    "UseCase": {
+      "enum": ["uma_investigation", "pattern_detection"],
+      "description": "uma_investigation bila tidak diisi. pattern_detection ditambahkan di CHANGE-002."
+    },
     "RunStartedPayload": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["caseId", "symbol", "maxToolCalls"],
+      "required": ["caseId", "maxToolCalls"],
       "properties": {
         "caseId": { "type": "string", "minLength": 1 },
         "symbol": { "$ref": "#/$defs/Symbol" },
-        "maxToolCalls": { "type": "integer", "minimum": 1 }
+        "maxToolCalls": { "type": "integer", "minimum": 1, "description": "Pada pattern_detection: batas tool call untuk seluruh job." },
+        "useCase": { "$ref": "#/$defs/UseCase" }
+      },
+      "if": { "properties": { "useCase": { "const": "pattern_detection" } }, "required": ["useCase"] },
+      "then": {},
+      "else": { "required": ["symbol"] }
+    },
+    "WorkerRole": { "enum": ["stock", "broker", "ownership"] },
+    "Lead": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "target", "reason"],
+      "properties": {
+        "kind": { "enum": ["stock", "broker"] },
+        "target": { "type": "string", "minLength": 1, "description": "Kode saham atau kode broker." },
+        "reason": { "type": "string", "minLength": 1 }
+      }
+    },
+    "WorkerStartedPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["workerId", "role", "target", "depth"],
+      "properties": {
+        "workerId": { "type": "string", "minLength": 1, "description": "Sama dengan agentName event-event worker ini." },
+        "role": { "$ref": "#/$defs/WorkerRole" },
+        "target": { "type": "string", "minLength": 1, "description": "Saham, broker, atau klaster yang diperiksa." },
+        "depth": { "type": "integer", "minimum": 0, "description": "0 untuk kandidat awal, naik 1 untuk setiap jejak baru." },
+        "reason": { "type": "string", "description": "Kenapa orchestrator memulai worker ini." }
+      }
+    },
+    "WorkerFinishedPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["workerId", "role", "status", "summary"],
+      "properties": {
+        "workerId": { "type": "string", "minLength": 1 },
+        "role": { "$ref": "#/$defs/WorkerRole" },
+        "status": {
+          "enum": ["ok", "error", "cancelled", "limit_reached"],
+          "description": "limit_reached: worker berhenti di batas langkahnya; temuannya tetap dipakai."
+        },
+        "summary": { "type": "string", "maxLength": 500, "description": "Temuan worker untuk UI, bahasa indikasi." },
+        "leads": { "type": "array", "items": { "$ref": "#/$defs/Lead" }, "description": "Jejak baru yang diusulkan ke orchestrator." }
       }
     },
     "StepStartedPayload": {
@@ -174,12 +235,14 @@
     "ApprovalRequiredPayload": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["approvalId", "revision", "memo"],
+      "required": ["approvalId", "revision"],
       "properties": {
         "approvalId": { "type": "string", "minLength": 1 },
         "revision": { "type": "integer", "minimum": 0, "description": "0 untuk draf pertama, naik 1 setiap keputusan revise." },
-        "memo": { "$ref": "#/$defs/Memo" }
-      }
+        "memo": { "$ref": "#/$defs/Memo", "description": "Investigator UMA." },
+        "report": { "$ref": "#/$defs/PatternReport", "description": "Deteksi pola (CHANGE-002)." }
+      },
+      "oneOf": [ { "required": ["memo"] }, { "required": ["report"] } ]
     },
     "DonePayload": {
       "type": "object",
@@ -188,8 +251,10 @@
       "properties": {
         "outcome": { "enum": ["approved", "rejected", "cancelled"] },
         "memo": { "$ref": "#/$defs/Memo", "description": "Memo terakhir; ada untuk approved dan rejected." },
+        "report": { "$ref": "#/$defs/PatternReport", "description": "Laporan terakhir pada deteksi pola; ada untuk approved dan rejected." },
         "toolCallsUsed": { "type": "integer", "minimum": 0 }
-      }
+      },
+      "not": { "required": ["memo", "report"] }
     },
     "ErrorPayload": {
       "type": "object",
@@ -275,28 +340,83 @@
           "enum": ["price_volume", "news", "corporate_action", "broker", "bandar", "foreign", "insider"]
         },
         "statement": { "type": "string", "minLength": 1 },
-        "evidence": {
+        "evidence": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/Evidence" } }
+      }
+    },
+    "Evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["toolCallId", "toolName", "detail"],
+      "properties": {
+        "toolCallId": { "type": "string", "minLength": 1 },
+        "toolName": { "type": "string", "minLength": 1 },
+        "detail": { "type": "string", "minLength": 1 }
+      }
+    },
+    "Statement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["statement", "evidence"],
+      "properties": {
+        "statement": { "type": "string", "minLength": 1 },
+        "evidence": { "type": "array", "items": { "$ref": "#/$defs/Evidence" } }
+      }
+    },
+    "PatternReport": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Laporan deteksi akumulasi-distribusi terpola (asd-pattern-detection.md, Struktur laporan).",
+      "required": ["summary", "periodStart", "periodEnd", "counts", "clusters", "alternativeExplanations",
+                   "leadsNotFollowed", "limitsReached", "dataLimitations", "followUps", "disclaimer"],
+      "properties": {
+        "summary": { "type": "string", "minLength": 1, "description": "Ringkasan indikasi, 2-4 kalimat." },
+        "periodStart": { "$ref": "#/$defs/Date" },
+        "periodEnd": { "$ref": "#/$defs/Date" },
+        "counts": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["clusters", "stocks", "brokers"],
+          "properties": {
+            "clusters": { "type": "integer", "minimum": 0 },
+            "stocks": { "type": "integer", "minimum": 0 },
+            "brokers": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "clusters": {
           "type": "array",
-          "minItems": 1,
           "items": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["toolCallId", "toolName", "detail"],
+            "required": ["name", "stocks", "dominantBrokers", "chronology", "findings"],
             "properties": {
-              "toolCallId": { "type": "string", "minLength": 1 },
-              "toolName": { "type": "string", "minLength": 1 },
-              "detail": { "type": "string", "minLength": 1 }
+              "name": { "type": "string", "minLength": 1 },
+              "stocks": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/Symbol" } },
+              "dominantBrokers": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+              "chronology": { "type": "string", "minLength": 1, "description": "Kronologi akumulasi dan distribusi." },
+              "ownershipLinks": { "type": ["string", "null"], "description": "Keterkaitan kepemilikan bila ada." },
+              "findings": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/Statement" } }
             }
           }
-        }
+        },
+        "alternativeExplanations": { "type": "array", "items": { "$ref": "#/$defs/Statement" } },
+        "leadsNotFollowed": { "type": "array", "items": { "$ref": "#/$defs/Lead" } },
+        "limitsReached": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "dataLimitations": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "followUps": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "disclaimer": { "const": "Indikasi untuk ditelaah analis, bukan kesimpulan pelanggaran." }
       }
     },
     "InvestigationRequest": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["caseId", "symbol", "anomalyDate", "trigger"],
+      "required": ["caseId"],
+      "if": { "properties": { "useCase": { "const": "pattern_detection" } }, "required": ["useCase"] },
+      "then": { "required": ["job"] },
+      "else": { "required": ["symbol", "anomalyDate", "trigger"] },
       "properties": {
         "caseId": { "type": "string", "minLength": 1 },
+        "useCase": { "$ref": "#/$defs/UseCase" },
+        "job": { "$ref": "#/$defs/PatternJob" },
         "symbol": { "$ref": "#/$defs/Symbol" },
         "anomalyDate": { "$ref": "#/$defs/Date" },
         "trigger": {
@@ -313,6 +433,45 @@
           }
         },
         "notes": { "type": "string" }
+      }
+    },
+    "PatternJob": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Masukan deteksi pola: kandidat dari penyaringan awal (kode biasa di aplikasi) dan batas yang ditegakkan agent.",
+      "required": ["windowStart", "windowEnd", "candidates", "limits"],
+      "properties": {
+        "windowStart": { "$ref": "#/$defs/Date" },
+        "windowEnd": { "$ref": "#/$defs/Date" },
+        "candidates": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["symbol", "priceChangePct"],
+            "properties": {
+              "symbol": { "$ref": "#/$defs/Symbol" },
+              "priceChangePct": { "type": "number", "description": "Perubahan harga dalam jendela pengamatan." },
+              "reason": { "type": "string" }
+            }
+          }
+        },
+        "limits": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["maxDepth", "maxStocks", "brokersPerStock", "maxStepsPerWorker", "maxToolCalls", "maxMinutes", "minTopBuyerSharePct", "maxBrokerSpreadPct"],
+          "properties": {
+            "maxDepth": { "type": "integer", "minimum": 0 },
+            "maxStocks": { "type": "integer", "minimum": 1 },
+            "brokersPerStock": { "type": "integer", "minimum": 1 },
+            "maxStepsPerWorker": { "type": "integer", "minimum": 1 },
+            "maxToolCalls": { "type": "integer", "minimum": 1 },
+            "maxMinutes": { "type": "integer", "minimum": 1 },
+            "minTopBuyerSharePct": { "type": "number", "minimum": 0, "maximum": 100 },
+            "maxBrokerSpreadPct": { "type": "number", "minimum": 0, "maximum": 100 }
+          }
+        }
       }
     },
     "ApprovalDecision": {

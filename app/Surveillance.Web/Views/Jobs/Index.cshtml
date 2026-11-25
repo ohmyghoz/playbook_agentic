@@ -1,0 +1,53 @@
+@model JobListViewModel
+@{
+    ViewData["Title"] = "Deteksi pola";
+    var wib = TimeZoneInfo.FindSystemTimeZoneById("Asia/Jakarta");
+    var o = Model.Options;
+}
+
+<h1 class="h3">Deteksi akumulasi-distribusi terpola</h1>
+<p style="max-width: 48rem">
+    Job ini menyaring saham yang harganya bergerak minimal @o.MinPriceChangePct% dalam @o.WindowDays hari bursa,
+    lalu orchestrator dan worker agent menelusuri broker dan kepemilikannya. Job berjalan di server; Anda boleh
+    menutup browser. Anda akan diberi tahu saat laporannya siap ditelaah. Hasilnya adalah indikasi untuk ditelaah
+    analis, bukan kesimpulan pelanggaran.
+</p>
+
+@if (Model.Message is not null)
+{
+    <div class="alert alert-warning py-2" role="status">@Model.Message</div>
+}
+
+<form asp-action="Start" method="post" class="card card-body mb-4" style="max-width: 48rem">
+    <p class="small mb-2">
+        Agent aktif: <strong>@Model.ActiveAgent</strong>. Batas: @o.MaxCandidates kandidat, kedalaman @o.MaxDepth,
+        @o.MaxStocks saham, @o.MaxToolCalls panggilan data, dan @o.MaxMinutes menit per job.
+    </p>
+    <div>
+        <button type="submit" class="btn btn-primary btn-sm">Mulai job baru</button>
+    </div>
+</form>
+
+<h2 class="h5">Job</h2>
+@if (Model.Jobs.Count == 0)
+{
+    <p>Belum ada job. Mulai job pertama dengan tombol di atas.</p>
+}
+else
+{
+    <table class="table table-sm align-middle">
+        <thead><tr><th>Dimulai</th><th>Oleh</th><th>Solusi</th><th>Status</th><th></th></tr></thead>
+        <tbody>
+            @foreach (var j in Model.Jobs)
+            {
+                <tr>
+                    <td>@TimeZoneInfo.ConvertTimeFromUtc(j.CreatedAt, wib).ToString("dd-MM-yyyy HH.mm") WIB</td>
+                    <td>@(j.StartedBy ?? "-")</td>
+                    <td>@j.Provider</td>
+                    <td><span class="status status-@j.Status.ToString().ToLowerInvariant()">@CaseStatusText.Label(j.Status, job: true)</span></td>
+                    <td><a asp-action="Details" asp-route-id="@j.Id">@(j.Status.IsTerminal() ? "Buka hasil" : "Buka")</a></td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}

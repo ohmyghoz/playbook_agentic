@@ -20,7 +20,8 @@ public sealed class AgentOptions
 }
 
 /// <summary>One agent solution as the settings page shows it.</summary>
-public sealed record AgentProvider(string Key, string Name, string Model, string Description);
+/// <param name="SupportsPatternDetection">The solution runs use case 2 (CHANGE-002); jobs are offered only then.</param>
+public sealed record AgentProvider(string Key, string Name, string Model, string Description, bool SupportsPatternDetection = false);
 
 /// <summary>Whether a solution can take a new investigation right now.</summary>
 public sealed record AgentProviderStatus(bool Ready, string Message);
@@ -41,7 +42,8 @@ public sealed class AgentClientRegistry(IServiceProvider services, IConfiguratio
 
     public IReadOnlyList<AgentProvider> Providers { get; } =
     [
-        new(Fake, "Agent tiruan", "tanpa model", "Skrip tetap untuk pengembangan dan demo; tidak memanggil model atau MCP."),
+        new(Fake, "Agent tiruan", "tanpa model", "Skrip tetap untuk pengembangan dan demo; tidak memanggil model atau MCP.",
+            SupportsPatternDetection: true),
         new(Maf, "Microsoft Agent Framework", configuration["Agent:Maf:Model"] ?? "gpt-5-mini",
             "Berjalan di dalam aplikasi; model OpenAI lewat platform.openai."),
         new(LangGraph, "LangGraph", configuration["Agent:LangGraph:ModelLabel"] ?? "-",

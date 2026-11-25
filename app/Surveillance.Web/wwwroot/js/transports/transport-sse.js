@@ -5,7 +5,7 @@
     "use strict";
 
     const eventTypes = ["run_started", "step_started", "token", "tool_call_started", "tool_call_finished",
-        "approval_required", "done", "error"];
+        "approval_required", "worker_started", "worker_finished", "done", "error"];
 
     window.AgentTransports.register("sse", function (options, stats, deliver) {
         let source = null;

@@ -143,7 +143,6 @@ public partial class SseAndLabTransportTests(PingSurveillanceFactory factory) : 
             $"/investigations/{caseId}" + (requested is null ? "" : "?transport=" + requested));
 
         Assert.Contains($"data-transport=\"{expected}\"", page);
-        Assert.Equal(expected == "signalr", page.Contains("signalr.min.js"));
         Assert.Contains("tetap berjalan di server walau tab ini ditutup", page);
     }
 

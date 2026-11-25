@@ -26,4 +26,20 @@ public interface ICaseRepository
     Task SetRunIdAsync(Guid caseId, string runId, CancellationToken ct);
 
     Task<CaseCursor> GetCursorAsync(Guid caseId, CancellationToken ct);
+
+    // ---- use case 2 jobs ----
+
+    /// <summary>UMA cases only (UseCase null), newest first.</summary>
+    Task<List<InvestigationCase>> ListInvestigationsAsync(int take, CancellationToken ct);
+
+    /// <summary>Pattern-detection jobs, newest first.</summary>
+    Task<List<InvestigationCase>> ListJobsAsync(int take, CancellationToken ct);
+
+    /// <summary>Jobs created but not yet started at the agent (screening pending, e.g. after a restart).</summary>
+    Task<List<Guid>> ListJobsWaitingForScreeningAsync(CancellationToken ct);
+
+    Task SetJobAsync(Guid caseId, string jobJson, CancellationToken ct);
+
+    /// <summary>The user's jobs that wait for an analyst decision.</summary>
+    Task<int> CountJobsAwaitingAsync(string user, CancellationToken ct);
 }

@@ -83,5 +83,15 @@ body {
 .steps .step-stopped .step-mark { border-color: #dc2626; background: #dc2626; }
 .step-state { color: #6c757d; font-weight: normal; }
 
+/* Pattern: worker panels */
+.worker { border-left: 4px solid #3b82f6; }
+.worker.ok { border-left-color: #16a34a; }
+.worker.failed { border-left-color: #dc2626; }
+.worker .tool-call { margin-bottom: 0.25rem; }
+.worker-leads { padding-left: 1rem; color: #1e3a8a; }
+
 /* Pattern: evidence */
 .evidence-preview { max-height: 18rem; overflow: auto; font-size: 0.75rem; background: #f8f9fa; padding: 0.5rem; border-radius: 0.25rem; white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* Job notifications */
+.job-notice { position: fixed; right: 1rem; bottom: 1rem; z-index: 1050; max-width: 24rem; margin: 0; }

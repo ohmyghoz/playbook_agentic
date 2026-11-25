@@ -18,6 +18,15 @@
         idx_foreign: ["Sedang memeriksa arus dana asing…", "Arus dana asing"],
         idx_stockbit_movements: ["Sedang memeriksa transaksi insider…", "Transaksi insider"],
         submit_memo: ["Draf memo menunggu keputusan analis…", "Draf memo"],
+        submit_report: ["Draf laporan menunggu keputusan analis…", "Draf laporan"],
+        idx_screen: ["Sedang menyaring saham ramai…", "Penyaringan saham"],
+        idx_market_brokers: ["Sedang memeriksa peringkat broker pasar…", "Peringkat broker pasar"],
+        idx_members: ["Sedang memeriksa daftar anggota bursa…", "Anggota bursa"],
+        idx_technical: ["Sedang menghitung indikator teknikal…", "Indikator teknikal"],
+        idx_ownership_ticker: ["Sedang membaca pemegang saham di atas 1%…", "Pemegang saham di atas 1%"],
+        idx_ownership_graph: ["Sedang menelusuri jaringan kepemilikan…", "Jaringan kepemilikan"],
+        idx_ownership_entity: ["Sedang membaca kepemilikan satu entitas…", "Kepemilikan entitas"],
+        idx_ownership_changes: ["Sedang memeriksa perubahan kepemilikan…", "Perubahan kepemilikan"],
     };
 
     function label(name, running) {

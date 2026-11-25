@@ -21,6 +21,12 @@
         cancelled: ["alert-warning", "Investigasi dihentikan. Event yang sudah masuk tetap tersimpan."],
     };
 
+    const jobDoneText = {
+        approved: ["alert-success", "Laporan disetujui analis. Job selesai."],
+        rejected: ["alert-secondary", "Laporan ditolak analis. Job selesai."],
+        cancelled: ["alert-warning", "Job dihentikan. Temuan yang sudah masuk tetap tersimpan."],
+    };
+
     AgentUi.register("error-banner", ctx => {
         // The agent ends both a stop and an expiry with done(cancelled); the application knows which.
         async function explainCancel(p) {
@@ -57,7 +63,7 @@
                     retry.classList.toggle("d-none", !canRetry);
                     banner.classList.remove("d-none");
                 } else if (event.type === "done") {
-                    const [cls, text] = doneText[p.outcome];
+                    const [cls, text] = (ctx.data.kind === "job" && jobDoneText[p.outcome]) || doneText[p.outcome];
                     doneBanner.className = "alert " + cls;
                     doneBanner.textContent = text + " Panggilan data: " + p.toolCallsUsed + ".";
                     if (p.outcome === "cancelled" && ctx.data.claimUrl && ctx.mode === "live") explainCancel(p);

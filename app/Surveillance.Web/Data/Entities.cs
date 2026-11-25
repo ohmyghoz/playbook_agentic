@@ -32,6 +32,18 @@ public class InvestigationCase
 
     public string? Notes { get; set; }
     public required string Provider { get; set; }
+
+    /// <summary>Null for the UMA investigator; "pattern_detection" for a use case 2 job (CHANGE-002).</summary>
+    public string? UseCase { get; set; }
+
+    /// <summary>The screened <c>PatternJob</c> as JSON, once screening has run.</summary>
+    public string? JobJson { get; set; }
+
+    /// <summary>Who started the case (display name) and the account to notify when a job needs them.</summary>
+    public string? StartedBy { get; set; }
+    public string? StartedByUser { get; set; }
+
+    public bool IsJob => UseCase == PatternJobs.UseCaseName;
     public string? RunId { get; set; }
     public CaseStatus Status { get; set; }
     public long LastSequence { get; set; }
@@ -70,6 +82,10 @@ public class AgentEventRecord
     public required string RunId { get; set; }
     public long Sequence { get; set; }
     public required string Type { get; set; }
+
+    /// <summary>Which agent of a multi-agent run emitted the event; null for UMA.</summary>
+    public string? AgentName { get; set; }
+
     public DateTime Timestamp { get; set; }
     public required string PayloadJson { get; set; }
     public DateTime ReceivedAt { get; set; }

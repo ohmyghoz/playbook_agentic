@@ -45,9 +45,12 @@
         const statusEl = ctx.part("status");
         const connectionEl = ctx.part("connection");
 
+        // A use case 2 job (data-kind="job") submits a report, not a memo.
+        const jobText = { approved: "Laporan disetujui", rejected: "Laporan ditolak" };
+
         function setStatus(key) {
             if (!statusEl) return;
-            statusEl.textContent = statusText[key];
+            statusEl.textContent = (root.dataset.kind === "job" && jobText[key]) || statusText[key];
             statusEl.className = "status status-" + key;
         }
 

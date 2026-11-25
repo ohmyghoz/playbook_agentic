@@ -20,6 +20,7 @@ public static class EventMapping
         RunId = e.RunId,
         Sequence = e.Sequence,
         Type = EnumName(e.Type),
+        AgentName = e.AgentName,
         Timestamp = e.Timestamp,
         PayloadJson = e.Payload.GetRawText(),
         ReceivedAt = DateTime.UtcNow,
@@ -28,7 +29,7 @@ public static class EventMapping
     public static AgentEvent ToEvent(AgentEventRecord r)
     {
         using var doc = JsonDocument.Parse(r.PayloadJson);
-        return new AgentEvent(r.RunId, r.Sequence, r.Timestamp, ParseType(r.Type), doc.RootElement.Clone());
+        return new AgentEvent(r.RunId, r.Sequence, r.Timestamp, ParseType(r.Type), doc.RootElement.Clone(), r.AgentName);
     }
 
     public static bool IsTerminal(AgentEventRecord r) => r.Type is "done" or "error";

@@ -32,6 +32,11 @@ public class SurveillanceDbContext(DbContextOptions<SurveillanceDbContext> optio
             e.HasIndex(x => new { x.Status, x.AwaitingSince });
             e.Property(x => x.ClaimedBy).HasMaxLength(128);
             e.Property(x => x.ClaimedByUser).HasMaxLength(64);
+            e.Property(x => x.UseCase).HasMaxLength(32);
+            e.Property(x => x.StartedBy).HasMaxLength(128);
+            e.Property(x => x.StartedByUser).HasMaxLength(64);
+            e.Ignore(x => x.IsJob);
+            e.HasIndex(x => new { x.UseCase, x.CreatedAt });
             e.HasMany(x => x.Events).WithOne().HasForeignKey(x => x.CaseId);
             e.HasMany(x => x.Decisions).WithOne().HasForeignKey(x => x.CaseId);
         });
@@ -40,6 +45,7 @@ public class SurveillanceDbContext(DbContextOptions<SurveillanceDbContext> optio
         {
             e.Property(x => x.RunId).HasMaxLength(128);
             e.Property(x => x.Type).HasMaxLength(32);
+            e.Property(x => x.AgentName).HasMaxLength(64);
             e.HasIndex(x => new { x.RunId, x.Sequence }).IsUnique();
             e.HasIndex(x => new { x.CaseId, x.Sequence });
         });

@@ -1,0 +1,7 @@
+@* Pattern: one panel per worker of a multi-agent run (CHANGE-002): worker_started opens it, tool calls with
+   that agentName fill it, worker_finished closes it with status, summary and new leads.
+   Module: wwwroot/js/patterns/worker-panels.js *@
+<section data-pattern="worker-panels" aria-label="Worker">
+    <h2 class="h6 text-uppercase text-muted">Worker <span data-part="worker-count" class="badge text-bg-light"></span></h2>
+    <div data-part="workers" class="workers"></div>
+</section>

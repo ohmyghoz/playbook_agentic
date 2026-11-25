@@ -22,6 +22,42 @@ public sealed class CaseRepository(IDbContextFactory<SurveillanceDbContext> dbFa
             .SingleOrDefaultAsync(c => c.Id == caseId, ct);
     }
 
+    public async Task<List<InvestigationCase>> ListInvestigationsAsync(int take, CancellationToken ct)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        return await db.Cases.AsNoTracking().Where(c => c.UseCase == null)
+            .OrderByDescending(c => c.CreatedAt).Take(take).ToListAsync(ct);
+    }
+
+    public async Task<List<InvestigationCase>> ListJobsAsync(int take, CancellationToken ct)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        return await db.Cases.AsNoTracking().Where(c => c.UseCase == PatternJobs.UseCaseName)
+            .OrderByDescending(c => c.CreatedAt).Take(take).ToListAsync(ct);
+    }
+
+    public async Task<List<Guid>> ListJobsWaitingForScreeningAsync(CancellationToken ct)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        return await db.Cases.AsNoTracking()
+            .Where(c => c.UseCase == PatternJobs.UseCaseName && c.Status == CaseStatus.Starting && c.RunId == null)
+            .Select(c => c.Id).ToListAsync(ct);
+    }
+
+    public async Task SetJobAsync(Guid caseId, string jobJson, CancellationToken ct)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        await db.Cases.Where(c => c.Id == caseId)
+            .ExecuteUpdateAsync(s => s.SetProperty(c => c.JobJson, jobJson).SetProperty(c => c.UpdatedAt, DateTime.UtcNow), ct);
+    }
+
+    public async Task<int> CountJobsAwaitingAsync(string user, CancellationToken ct)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        return await db.Cases.CountAsync(c => c.UseCase == PatternJobs.UseCaseName && c.StartedByUser == user
+                                              && c.Status == CaseStatus.AwaitingApproval, ct);
+    }
+
     public async Task<List<InvestigationCase>> ListRecentAsync(int take, CancellationToken ct)
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct);

@@ -11,6 +11,8 @@ public enum AgentEventType
     ToolCallStarted,
     ToolCallFinished,
     ApprovalRequired,
+    WorkerStarted,
+    WorkerFinished,
     Done,
     Error,
 }
@@ -20,15 +22,17 @@ public enum AgentEventType
 /// object exactly as it appears on the wire.
 /// </summary>
 /// <param name="Timestamp">UTC; serialized with a trailing Z as the schema requires.</param>
+/// <param name="AgentName">Which agent of a multi-agent run emitted the event (CHANGE-002); null for UMA.</param>
 public sealed record AgentEvent(
     string RunId,
     long Sequence,
     DateTime Timestamp,
     AgentEventType Type,
-    JsonElement Payload)
+    JsonElement Payload,
+    string? AgentName = null)
 {
-    public static AgentEvent Create<TPayload>(string runId, long sequence, AgentEventType type, TPayload payload) =>
-        new(runId, sequence, DateTime.UtcNow, type, JsonSerializer.SerializeToElement(payload, AgentJson.Options));
+    public static AgentEvent Create<TPayload>(string runId, long sequence, AgentEventType type, TPayload payload, string? agentName = null) =>
+        new(runId, sequence, DateTime.UtcNow, type, JsonSerializer.SerializeToElement(payload, AgentJson.Options), agentName);
 
     public TPayload PayloadAs<TPayload>() =>
         Payload.Deserialize<TPayload>(AgentJson.Options)

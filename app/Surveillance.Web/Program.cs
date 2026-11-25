@@ -57,6 +57,22 @@ builder.Services.AddSingleton<AuditTimeline>();
 builder.Services.AddSingleton<ApprovalExpiryService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<ApprovalExpiryService>());
 
+// Use case 2: screening (ordinary code), background job runner, notifications (CHANGE-002).
+builder.Services.Configure<Surveillance.Web.Patterns.PatternDetectionOptions>(builder.Configuration.GetSection("PatternDetection"));
+if (builder.Configuration["PatternDetection:MarketData"] == "fake")
+{
+    builder.Services.AddSingleton<Surveillance.Web.Patterns.IMarketData, Surveillance.Web.Patterns.FakeMarketData>();
+}
+else
+{
+    builder.Services.AddSingleton<Surveillance.Web.Patterns.IMarketData, Surveillance.Web.Patterns.McpMarketData>();
+}
+
+builder.Services.AddSingleton<Surveillance.Web.Patterns.CandidateScreening>();
+builder.Services.AddSingleton<Surveillance.Web.Patterns.PatternJobRunner>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<Surveillance.Web.Patterns.PatternJobRunner>());
+builder.Services.AddHostedService<Surveillance.Web.Patterns.JobNotifier>();
+
 // Retention: old previews and events, token compaction, stale MAF run files (docs/RETENTION.md).
 builder.Services.Configure<RetentionOptions>(builder.Configuration.GetSection("Retention"));
 builder.Services.AddSingleton<RetentionService>();

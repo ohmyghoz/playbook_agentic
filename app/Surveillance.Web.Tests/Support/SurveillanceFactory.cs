@@ -32,6 +32,7 @@ public class SurveillanceFactory : WebApplicationFactory<Program>
         builder.UseSetting("Agent:Fake:Scenario", "Happy");
         builder.UseSetting("Agent:Fake:ToolDelayMs", ToolDelayMs.ToString());
         builder.UseSetting("Agent:Fake:TokenDelayMs", "0");
+        builder.UseSetting("PatternDetection:MarketData", "fake"); // screening without the MCP server
 
         builder.ConfigureServices(services =>
         {

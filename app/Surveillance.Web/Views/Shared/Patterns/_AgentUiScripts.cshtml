@@ -1,9 +1,6 @@
 @model bool
-@* Scripts for pages with [data-agent-ui] roots. Model: true when a root uses the SignalR transport. *@
-@if (Model)
-{
-    <script src="~/lib/microsoft-signalr/signalr.min.js"></script>
-}
+@* Scripts for pages with [data-agent-ui] roots. The SignalR client itself comes from _Layout (job
+   notifications), so the signalr transport is ready on every page; the model is kept for callers. *@
 <script src="~/js/transports/transport.js" asp-append-version="true"></script>
 <script src="~/js/transports/transport-sse.js" asp-append-version="true"></script>
 <script src="~/js/transports/transport-polling.js" asp-append-version="true"></script>
@@ -18,4 +15,5 @@
 <script src="~/js/patterns/error-banner.js" asp-append-version="true"></script>
 <script src="~/js/patterns/approval-card.js" asp-append-version="true"></script>
 <script src="~/js/patterns/case-claim.js" asp-append-version="true"></script>
+<script src="~/js/patterns/worker-panels.js" asp-append-version="true"></script>
 <script src="~/js/investigation.js" asp-append-version="true"></script>

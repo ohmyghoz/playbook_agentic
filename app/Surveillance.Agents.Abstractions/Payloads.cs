@@ -5,7 +5,8 @@ namespace Surveillance.Agents.Abstractions;
 // Payload shapes of events.schema.json. Property names serialize to camelCase
 // and enum values to snake_case through AgentJson.Options.
 
-public sealed record RunStartedPayload(string CaseId, string Symbol, int MaxToolCalls);
+/// <param name="Symbol">Null for pattern detection, which covers many stocks.</param>
+public sealed record RunStartedPayload(string CaseId, string? Symbol, int MaxToolCalls, UseCase? UseCase = null);
 
 public enum InvestigationStep
 {
@@ -44,7 +45,8 @@ public sealed record ToolCallFinishedPayload(
     ToolSource? Source = null,
     string? ResultPreview = null);
 
-public sealed record ApprovalRequiredPayload(string ApprovalId, int Revision, Memo Memo);
+/// <param name="Memo">The UMA memo; null when the draft is a pattern-detection report.</param>
+public sealed record ApprovalRequiredPayload(string ApprovalId, int Revision, Memo? Memo, PatternReport? Report = null);
 
 public enum RunOutcome
 {
@@ -53,7 +55,7 @@ public enum RunOutcome
     Cancelled,
 }
 
-public sealed record DonePayload(RunOutcome Outcome, int ToolCallsUsed, Memo? Memo = null);
+public sealed record DonePayload(RunOutcome Outcome, int ToolCallsUsed, Memo? Memo = null, PatternReport? Report = null);
 
 public enum AgentErrorCode
 {
@@ -124,3 +126,68 @@ public sealed record Memo(
 {
     public const string StandardDisclaimer = "Indikasi untuk ditelaah analis, bukan kesimpulan pelanggaran.";
 }
+
+// ---- CHANGE-002: multi-agent pattern detection ----
+
+public enum WorkerRole
+{
+    Stock,
+    Broker,
+    Ownership,
+}
+
+public enum LeadKind
+{
+    Stock,
+    Broker,
+}
+
+public sealed record Lead(LeadKind Kind, string Target, string Reason);
+
+public sealed record WorkerStartedPayload(string WorkerId, WorkerRole Role, string Target, int Depth, string? Reason = null);
+
+public enum WorkerStatus
+{
+    Ok,
+    Error,
+    Cancelled,
+    LimitReached,
+}
+
+public sealed record WorkerFinishedPayload(
+    string WorkerId,
+    WorkerRole Role,
+    WorkerStatus Status,
+    string Summary,
+    IReadOnlyList<Lead>? Leads = null);
+
+public sealed record Statement(string Text, IReadOnlyList<Evidence> Evidence)
+{
+    // The schema calls the text "statement"; the record keeps a short C# name.
+    [System.Text.Json.Serialization.JsonPropertyName("statement")]
+    public string Text { get; init; } = Text;
+}
+
+public sealed record ReportCounts(int Clusters, int Stocks, int Brokers);
+
+public sealed record PatternCluster(
+    string Name,
+    IReadOnlyList<string> Stocks,
+    IReadOnlyList<string> DominantBrokers,
+    string Chronology,
+    IReadOnlyList<Statement> Findings,
+    string? OwnershipLinks = null);
+
+/// <summary>The pattern-detection report submitted for the analyst (<c>$defs/PatternReport</c>).</summary>
+public sealed record PatternReport(
+    string Summary,
+    DateOnly PeriodStart,
+    DateOnly PeriodEnd,
+    ReportCounts Counts,
+    IReadOnlyList<PatternCluster> Clusters,
+    IReadOnlyList<Statement> AlternativeExplanations,
+    IReadOnlyList<Lead> LeadsNotFollowed,
+    IReadOnlyList<string> LimitsReached,
+    IReadOnlyList<string> DataLimitations,
+    IReadOnlyList<string> FollowUps,
+    string Disclaimer = Memo.StandardDisclaimer);

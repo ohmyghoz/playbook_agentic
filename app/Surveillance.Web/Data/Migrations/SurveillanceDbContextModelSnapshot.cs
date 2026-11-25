@@ -30,6 +30,10 @@ namespace Surveillance.Web.Data.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
 
+                    b.Property<string>("AgentName")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
                     b.Property<Guid>("CaseId")
                         .HasColumnType("uniqueidentifier");
 
@@ -191,6 +195,9 @@ namespace Surveillance.Web.Data.Migrations
                     b.Property<DateTime?>("EventsPurgedAt")
                         .HasColumnType("datetime2");
 
+                    b.Property<string>("JobJson")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<long>("LastSequence")
                         .HasColumnType("bigint");
 
@@ -205,6 +212,14 @@ namespace Surveillance.Web.Data.Migrations
                     b.Property<string>("RunId")
                         .HasMaxLength(128)
                         .HasColumnType("nvarchar(128)");
+
+                    b.Property<string>("StartedBy")
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<string>("StartedByUser")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
 
                     b.Property<string>("Status")
                         .IsRequired()
@@ -226,11 +241,17 @@ namespace Surveillance.Web.Data.Migrations
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("datetime2");
 
+                    b.Property<string>("UseCase")
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
                     b.HasKey("Id");
 
                     b.HasIndex("CreatedAt");
 
                     b.HasIndex("Status", "AwaitingSince");
+
+                    b.HasIndex("UseCase", "CreatedAt");
 
                     b.ToTable("Cases");
                 });

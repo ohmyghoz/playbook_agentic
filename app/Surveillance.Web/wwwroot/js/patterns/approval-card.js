@@ -72,6 +72,59 @@
             container.append(dl, el("p", "disclaimer small mt-2 mb-0", memo.disclaimer));
         }
 
+        // Pattern-detection report (CHANGE-002): clusters, alternatives, leads not followed, limits.
+        function renderReport(container, report) {
+            const leadKind = { stock: "saham", broker: "broker" };
+            container.append(el("p", "lead fs-6", report.summary),
+                el("p", "small text-muted", report.counts.clusters + " klaster, " + report.counts.stocks + " saham, "
+                    + report.counts.brokers + " broker · periode " + report.periodStart + " sampai " + report.periodEnd));
+
+            const statements = (title, list, target) => {
+                if (!list.length) return;
+                target.append(el("h3", "h6 mt-3", title));
+                const ul = el("ul", "findings");
+                for (const s of list) {
+                    const li = el("li", null, s.statement);
+                    if (s.evidence && s.evidence.length) {
+                        const ev = el("div", "small text-muted");
+                        s.evidence.forEach((e, i) => {
+                            if (i > 0) ev.append(document.createTextNode("; "));
+                            const a = el("a", null, e.toolName);
+                            a.href = "#tool-" + e.toolCallId;
+                            a.dataset.evidenceCall = e.toolCallId;
+                            ev.append("Bukti: ", a, document.createTextNode(" — " + e.detail));
+                        });
+                        li.append(ev);
+                    }
+                    ul.append(li);
+                }
+                target.append(ul);
+            };
+            const plain = (title, list) => {
+                if (!list.length) return;
+                container.append(el("h3", "h6 mt-3", title));
+                const ul = el("ul", "small");
+                for (const text of list) ul.append(el("li", null, text));
+                container.append(ul);
+            };
+
+            for (const c of report.clusters) {
+                const section = el("section", "cluster border rounded p-2 mt-3");
+                section.append(el("h3", "h6 mb-1", c.name),
+                    el("div", "small", "Saham: " + c.stocks.join(", ") + " · Broker dominan: " + (c.dominantBrokers.join(", ") || "-")),
+                    el("p", "small mb-1", c.chronology));
+                if (c.ownershipLinks) section.append(el("p", "small text-muted mb-1", "Kepemilikan: " + c.ownershipLinks));
+                statements("Temuan", c.findings, section);
+                container.append(section);
+            }
+            statements("Penjelasan alternatif", report.alternativeExplanations, container);
+            plain("Jejak yang tidak diikuti", report.leadsNotFollowed.map(l => (leadKind[l.kind] || l.kind) + " " + l.target + ": " + l.reason));
+            plain("Batas yang tercapai", report.limitsReached);
+            plain("Keterbatasan data", report.dataLimitations);
+            plain("Usulan tindak lanjut", report.followUps);
+            container.append(el("p", "disclaimer small mt-2 mb-0", report.disclaimer));
+        }
+
         async function submit(e, form, approvalId) {
             e.preventDefault();
             const message = form.querySelector(".approval-message");
@@ -117,15 +170,17 @@
         return {
             onEvent(event) {
                 const p = event.payload;
-                if (event.type === "tool_call_started" && p.toolName === "submit_memo") {
+                if (event.type === "tool_call_started" && (p.toolName === "submit_memo" || p.toolName === "submit_report")) {
                     submitCallId = p.toolCallId;
                 } else if (event.type === "approval_required") {
                     resolve("Diganti oleh draf berikutnya.");
                     const card = template.content.firstElementChild.cloneNode(true);
                     card.dataset.approvalId = p.approvalId;
-                    card.querySelector(".approval-title").textContent = p.revision === 0 ? "Draf memo" : "Draf memo, revisi ke-" + p.revision;
+                    const kind = p.report ? "Draf laporan" : "Draf memo";
+                    card.querySelector(".approval-title").textContent = p.revision === 0 ? kind : kind + ", revisi ke-" + p.revision;
                     card.querySelector(".approval-state").textContent = "Menunggu keputusan";
-                    renderMemo(card.querySelector(".memo"), p.memo);
+                    if (p.report) renderReport(card.querySelector(".memo"), p.report);
+                    else renderMemo(card.querySelector(".memo"), p.memo);
                     const form = card.querySelector(".approval-form");
                     if (ctx.interactive) form.addEventListener("submit", e => submit(e, form, p.approvalId));
                     else form.remove();

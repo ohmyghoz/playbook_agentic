@@ -12,7 +12,7 @@ namespace Surveillance.Web.Agents.Fake;
 /// from asd-investigator-uma.md with numbers taken from real BBCA output in
 /// mcp-tools.md. Runs live in memory and do not survive a restart.
 /// </summary>
-public sealed class FakeAgentClient(IOptions<FakeAgentOptions> options) : IAgentClient
+public sealed partial class FakeAgentClient(IOptions<FakeAgentOptions> options) : IAgentClient
 {
     public const int MaxToolCalls = 15;
     public const int MaxRevisions = 2;
@@ -86,14 +86,24 @@ public sealed class FakeAgentClient(IOptions<FakeAgentOptions> options) : IAgent
 
             if (run.Phase == RunPhase.New)
             {
-                yield return Emit(run, AgentEventType.RunStarted,
-                    new RunStartedPayload(run.Request.CaseId, run.Request.Symbol, MaxToolCalls));
-                if (StepBefore(run, AgentEventType.RunStarted) is { } first) yield return first;
-                Enqueue(run, InitialSteps(run));
+                if (run.Request.IsPatternDetection)
+                {
+                    run.Agent = Orchestrator;
+                    yield return Emit(run, AgentEventType.RunStarted, new RunStartedPayload(
+                        run.Request.CaseId, null, run.Request.Job!.Limits.MaxToolCalls, UseCase.PatternDetection));
+                    Enqueue(run, PatternSteps(run));
+                }
+                else
+                {
+                    yield return Emit(run, AgentEventType.RunStarted,
+                        new RunStartedPayload(run.Request.CaseId, run.Request.Symbol, MaxToolCalls));
+                    if (StepBefore(run, AgentEventType.RunStarted) is { } first) yield return first;
+                    Enqueue(run, InitialSteps(run));
+                }
             }
             else if (run.Phase == RunPhase.Resumed)
             {
-                Enqueue(run, ResumeSteps(run));
+                Enqueue(run, run.Request.IsPatternDetection ? PatternResumeSteps(run) : ResumeSteps(run));
             }
 
             run.Phase = RunPhase.Running;
@@ -110,6 +120,41 @@ public sealed class FakeAgentClient(IOptions<FakeAgentOptions> options) : IAgent
                         }
 
                         break;
+
+                    case AgentStep agent:
+                        run.Agent = agent.Name;
+                        break;
+
+                    case WorkerStartStep worker:
+                        run.Agent = worker.Payload.WorkerId;
+                        run.OpenWorkers.Add(worker.Payload);
+                        yield return Emit(run, AgentEventType.WorkerStarted, worker.Payload);
+                        break;
+
+                    case WorkerFinishStep worker:
+                        run.Agent = worker.Payload.WorkerId;
+                        run.OpenWorkers.RemoveAll(w => w.WorkerId == worker.Payload.WorkerId);
+                        yield return Emit(run, AgentEventType.WorkerFinished, worker.Payload);
+                        break;
+
+                    case ReportApprovalStep:
+                        run.Agent = Orchestrator;
+                        run.Revision++;
+                        run.Report = BuildReport(run);
+                        run.ApprovalId = $"approval_{run.Revision + 1}";
+                        var reportCallId = $"call_report_{run.Revision + 1}";
+                        run.InFlightTool = (reportCallId, SubmitReport);
+                        run.InFlightAgent = Orchestrator;
+                        yield return Emit(run, AgentEventType.ToolCallStarted, new ToolCallStartedPayload(
+                            reportCallId, SubmitReport, JsonSerializer.SerializeToElement(new { report = "(lihat approval_required)" })));
+                        yield return Emit(run, AgentEventType.ApprovalRequired,
+                            new ApprovalRequiredPayload(run.ApprovalId, run.Revision, null, run.Report));
+                        lock (run)
+                        {
+                            run.Phase = RunPhase.Paused;
+                        }
+
+                        yield break;
 
                     case TextStep text:
                         foreach (var chunk in Chunk(text.Text))
@@ -128,6 +173,8 @@ public sealed class FakeAgentClient(IOptions<FakeAgentOptions> options) : IAgent
                     case ToolStep tool:
                         var callId = $"call_{++run.CallCounter}";
                         run.ToolCallIds[tool.Name] = callId;
+                        run.ToolCallIds[run.Agent + "/" + tool.Name] = callId;
+                        run.InFlightAgent = run.Agent;
                         run.ToolCallsUsed++;
                         if (StepBefore(run, AgentEventType.ToolCallStarted, tool.Name) is { } toolStep) yield return toolStep;
                         yield return Emit(run, AgentEventType.ToolCallStarted,
@@ -136,6 +183,7 @@ public sealed class FakeAgentClient(IOptions<FakeAgentOptions> options) : IAgent
                         if (await DelayAsync(run.ToolDelayMs, ct))
                         {
                             run.InFlightTool = (callId, tool.Name);
+                            run.InFlightAgent = run.Agent;
                             foreach (var e in Cancel(run)) yield return e;
                             yield break;
                         }
@@ -168,17 +216,20 @@ public sealed class FakeAgentClient(IOptions<FakeAgentOptions> options) : IAgent
                     case FinishSubmitStep finish:
                         var (id, name) = run.InFlightTool!.Value;
                         run.InFlightTool = null;
+                        run.Agent = run.InFlightAgent ?? run.Agent;
                         yield return Emit(run, AgentEventType.ToolCallFinished,
                             new ToolCallFinishedPayload(id, name, ToolCallStatus.Ok, finish.Summary));
                         break;
 
                     case DoneStep done:
                         run.Phase = RunPhase.Finished;
-                        yield return Emit(run, AgentEventType.Done, new DonePayload(done.Outcome, run.ToolCallsUsed, run.Memo));
+                        run.Agent = run.Request.IsPatternDetection ? Orchestrator : null;
+                        yield return Emit(run, AgentEventType.Done, new DonePayload(done.Outcome, run.ToolCallsUsed, run.Memo, run.Report));
                         yield break;
 
                     case ErrorStep error:
                         run.Phase = RunPhase.Finished;
+                        run.Agent = run.Request.IsPatternDetection ? Orchestrator : null;
                         yield return Emit(run, AgentEventType.Error, new ErrorPayload(error.Code, error.Message, error.Retryable));
                         yield break;
                 }
@@ -208,20 +259,32 @@ public sealed class FakeAgentClient(IOptions<FakeAgentOptions> options) : IAgent
         if (run.InFlightTool is var (id, name))
         {
             run.InFlightTool = null;
+            run.Agent = run.InFlightAgent ?? run.Agent;
             yield return Emit(run, AgentEventType.ToolCallFinished, new ToolCallFinishedPayload(
                 id, name, ToolCallStatus.Error, "Dihentikan oleh pengguna.", new ToolError("cancelled", "Run dihentikan.")));
         }
 
+        // Pattern detection: every running worker is closed before the run ends (asd-pattern-detection.md).
+        foreach (var worker in run.OpenWorkers.ToList())
+        {
+            run.Agent = worker.WorkerId;
+            yield return Emit(run, AgentEventType.WorkerFinished, new WorkerFinishedPayload(
+                worker.WorkerId, worker.Role, WorkerStatus.Cancelled, "Dihentikan oleh pengguna."));
+        }
+
+        run.OpenWorkers.Clear();
+        run.Agent = run.Request.IsPatternDetection ? Orchestrator : null;
         yield return Emit(run, AgentEventType.Done, new DonePayload(RunOutcome.Cancelled, run.ToolCallsUsed));
     }
 
     private static AgentEvent Emit<T>(FakeRun run, AgentEventType type, T payload) =>
-        AgentEvent.Create(run.RunId, ++run.Sequence, type, payload);
+        AgentEvent.Create(run.RunId, ++run.Sequence, type, payload, run.Agent);
 
     /// <summary>The step_started event that must come before an event, if the stage moves.</summary>
     private static AgentEvent? StepBefore(FakeRun run, AgentEventType type, string? toolName = null)
     {
-        if (InvestigationSteps.Next(run.Step, type, toolName) is not { } step)
+        // The five ASD stages belong to the UMA investigator; pattern detection shows workers instead.
+        if (run.Request.IsPatternDetection || InvestigationSteps.Next(run.Step, type, toolName) is not { } step)
         {
             return null;
         }
@@ -243,8 +306,9 @@ public sealed class FakeAgentClient(IOptions<FakeAgentOptions> options) : IAgent
 
         var provider = tool.Name switch
         {
-            "idx_quote" or "idx_history" => "yahoo",
-            "idx_news" or "idx_foreign" => "idx",
+            "idx_quote" or "idx_history" or "idx_screen" => "yahoo",
+            "idx_news" or "idx_foreign" or "idx_market_brokers" or "idx_members" => "idx",
+            _ when tool.Name.StartsWith("idx_ownership", StringComparison.Ordinal) => "local-db",
             _ => "stockbit",
         };
         object data = tool.Name == "idx_history"
@@ -486,6 +550,12 @@ public sealed class FakeAgentClient(IOptions<FakeAgentOptions> options) : IAgent
         public Memo? Memo { get; set; }
         public (string Id, string Name)? InFlightTool { get; set; }
         public InvestigationStep? Step { get; set; }
+
+        /// <summary>agentName of the events being emitted (pattern detection); null for UMA.</summary>
+        public string? Agent { get; set; }
+        public string? InFlightAgent { get; set; }
+        public List<WorkerStartedPayload> OpenWorkers { get; } = [];
+        public PatternReport? Report { get; set; }
     }
 
     private abstract record Step;

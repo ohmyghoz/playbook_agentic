@@ -16,13 +16,50 @@ public sealed record AnomalyTrigger(
     double? AvgVolume = null,
     double? VolumeRatio = null);
 
-/// <summary>Input of the UMA investigator (<c>$defs/InvestigationRequest</c>).</summary>
+/// <summary>
+/// Input of a run (<c>$defs/InvestigationRequest</c>). For the UMA investigator (UseCase null)
+/// Symbol, AnomalyDate and Trigger describe the anomaly. For pattern detection (CHANGE-002) the
+/// application still fills them, with the first candidate, the window's last day and the
+/// screening rule, so adapters written for UMA keep working; the agent reads <see cref="Job"/>.
+/// </summary>
 public sealed record InvestigationRequest(
     string CaseId,
     string Symbol,
     DateOnly AnomalyDate,
     AnomalyTrigger Trigger,
-    string? Notes = null);
+    string? Notes = null,
+    UseCase? UseCase = null,
+    PatternJob? Job = null)
+{
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool IsPatternDetection => UseCase == Abstractions.UseCase.PatternDetection;
+}
+
+public enum UseCase
+{
+    UmaInvestigation,
+    PatternDetection,
+}
+
+public sealed record PatternCandidate(string Symbol, double PriceChangePct, string? Reason = null);
+
+/// <summary>Limits the pattern-detection agent enforces in code (<c>$defs/PatternJob.limits</c>).</summary>
+public sealed record PatternLimits(
+    int MaxDepth,
+    int MaxStocks,
+    int BrokersPerStock,
+    int MaxStepsPerWorker,
+    int MaxToolCalls,
+    int MaxMinutes,
+    double MinTopBuyerSharePct,
+    double MaxBrokerSpreadPct);
+
+/// <summary>Input of pattern detection: screened candidates and limits (<c>$defs/PatternJob</c>).</summary>
+public sealed record PatternJob(
+    DateOnly WindowStart,
+    DateOnly WindowEnd,
+    IReadOnlyList<PatternCandidate> Candidates,
+    PatternLimits Limits);
 
 public enum Decision
 {

@@ -30,7 +30,9 @@ Diperbarui setelah Tahap 11: antrean approval, pengambilan dan pengalihan kasus,
 kedaluwarsa approval, garis waktu audit, `/lab/approval`, dan `docs/APPROVAL-STATES.md`.
 
 Diperbarui setelah Tahap 12: repository, `schema.sql` dan ERD, `run_interrupted`
-setelah restart (CHANGE-003), dan retensi data. Butir yang berubah merujuk
+setelah restart (CHANGE-003), dan retensi data.
+
+Diperbarui setelah Tahap 13: use case 2 di aplikasi dengan agent tiruan (CHANGE-002). Butir yang berubah merujuk
 ke nama file dan method, bukan nomor baris, karena nomor baris lama sudah bergeser.
 
 ## Ringkasan
@@ -40,7 +42,7 @@ ke nama file dan method, bukan nomor baris, karena nomor baris lama sudah berges
 | 10. Transport dan streaming | 8 | 0 | 0 |
 | 11. Pola UI/UX agentic | 11 | 0 | 0 |
 | 12. Human-in-the-loop | 8 | 0 | 0 |
-| 13. State dan durabilitas | 6 | 0 | 2 |
+| 13. State dan durabilitas | 8 | 0 | 0 |
 
 Kekuatan utama yang sudah ada:
 
@@ -141,10 +143,10 @@ Sejak Tahap 10, setiap pola punya satu partial view dan satu modul JavaScript
 | Pembagian peran: SQL Server = sumber kebenaran, checkpoint = hanya untuk melanjutkan | **Ya** | `CLAUDE.md` (Arsitektur, Catatan keputusan), `RunPump.PersistAsync`; state framework: MAF di `App_Data/maf-runs`, LangGraph `checkpoints.db`, ADK `sessions.db` (di luar `app/`) | – |
 | Skema SQL Server: kasus, riwayat event, keputusan approval | **Ya** | `Entities.cs`, `SurveillanceDbContext.cs`, `Data/Migrations/`; `docs/schema.sql` (dibuat dengan `dotnet ef migrations script --idempotent`); `docs/ERD.md` (Mermaid) | – |
 | Model dan repository C# | **Ya** | `Data/Repositories/` (`ICaseRepository`, `IEventRepository`, `IApprovalRepository`, `ISettingsRepository`, implementasi EF di `EfRepositories.cs`); dipakai `InvestigationService`, `RunPump`, `CaseClaims`, `ApprovalExpiryService`, `AuditTimeline`, `AgentSelection`, `RetentionService` | `RepositoryBoundaryTests` memastikan tidak ada `DbContext` di luar folder `Data` dan `Program.cs`. |
-| Use case 2: daftar job, status, notifikasi selesai, membuka kembali hasil | **Belum** | – (Tahap 6b) | Belum ada spesifikasi `asd-pattern-detection.md`, background service job, halaman daftar job, halaman detail per worker, atau notifikasi. Progres per worker butuh 🔶 `agentName`. |
+| Use case 2: daftar job, status, notifikasi selesai, membuka kembali hasil | **Ya** | `contracts/asd-pattern-detection.md`, `contracts/CHANGE-002-multi-agent.md`; `Patterns/CandidateScreening.cs` (penyaringan awal sebagai kode biasa), `Patterns/PatternJobRunner.cs` (job di background service), `Patterns/JobNotifier.cs` (SignalR ke pengguna yang memulai job); `/jobs` dan `/jobs/{id}` (`JobsController`, `_WorkerPanels.cshtml` + `worker-panels.js`, laporan di `approval-card.js`); penanda di navigasi (`job-notifications.js`) | Tahap 13 memakai agent tiruan. MAF, LangGraph, dan ADK menyusul di Tahap 14. |
 | Resume setelah restart | **Ya** | `StartupRecovery.cs`, `InvestigationService.RecoverAsync`, `RunPump` (`afterRestart`), kode error `run_interrupted` (`contracts/CHANGE-003-run-interrupted.md`), `docs/RESTART.md` (tabel per solusi dan alasan desain) | Run yang menunggu approval dilanjutkan. Run yang terputus di tengah langkah ditutup dengan `run_interrupted` yang bisa diulang, dan halaman menawarkan mulai ulang. |
 | Retensi dan pembersihan | **Ya** | `RetentionService.cs` (pratinjau 30 hari, penggabungan token setelah run selesai, event 90 hari, file `maf-runs` 30 hari), `docs/RETENTION.md` (termasuk pembersihan database service Python) | Pembersihan database service Python didokumentasikan, belum dijadwalkan otomatis. |
-| Demo 13-1: daftar job dengan status berjalan | **Belum** | – | Bergantung pada use case 2. |
+| Demo 13-1: daftar job dengan status berjalan | **Ya** | `/jobs` (daftar, status, "Buka hasil"), `/jobs/{id}` (satu panel per worker, laporan untuk disetujui, tombol hentikan) | Diuji di browser: penyaringan dengan data MCP sungguhan (10 kandidat), lima worker termasuk satu jejak baru pada kedalaman 1, pemberitahuan di halaman lain, lalu approval. |
 
 ## Butir yang butuh perubahan kontrak event 🔶
 

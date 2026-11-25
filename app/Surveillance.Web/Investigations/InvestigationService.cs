@@ -71,8 +71,39 @@ public sealed class InvestigationService(
             UpdatedAt = now,
         };
         await cases.AddAsync(@case, ct);
+        await LaunchAsync(@case, new InvestigationRequest(@case.Id.ToString(), @case.Symbol, @case.AnomalyDate, trigger, @case.Notes), ct);
+        return @case.Id;
+    }
 
-        var request = new InvestigationRequest(@case.Id.ToString(), @case.Symbol, @case.AnomalyDate, trigger, @case.Notes);
+    /// <summary>Creates a use case 2 job in Starting; <see cref="Patterns.PatternJobRunner"/> screens and launches it.</summary>
+    public async Task<Guid> CreateJobAsync(string user, string displayName, CancellationToken ct)
+    {
+        var now = DateTime.UtcNow;
+        var trigger = new AnomalyTrigger(TriggerKind.Price, "Penyaringan pola: perubahan harga besar dalam 10 hari bursa");
+        var @case = new InvestigationCase
+        {
+            Id = Guid.NewGuid(),
+            Symbol = PatternJobs.JobSymbol,
+            AnomalyDate = DateOnly.FromDateTime(now),
+            TriggerJson = JsonSerializer.Serialize(trigger, AgentJson.Options),
+            Provider = await selection.GetActiveAsync(ct),
+            UseCase = PatternJobs.UseCaseName,
+            StartedBy = displayName,
+            StartedByUser = user,
+            Status = CaseStatus.Starting,
+            CreatedAt = now,
+            UpdatedAt = now,
+        };
+        await cases.AddAsync(@case, ct);
+        return @case.Id;
+    }
+
+    /// <summary>
+    /// Starts the agent run for a stored case and attaches the pump. A failure to start ends the
+    /// case with an error event, so every case still finishes with a catalog event.
+    /// </summary>
+    public async Task LaunchAsync(InvestigationCase @case, InvestigationRequest request, CancellationToken ct)
+    {
         string runId;
         try
         {
@@ -87,13 +118,24 @@ public sealed class InvestigationService(
                 ? (AgentErrorCode.Internal, "Solusi agent yang dipilih belum siap. Periksa halaman Setting, lalu coba lagi.")
                 : (AgentErrorCode.McpUnavailable, "Agent tidak bisa dimulai. Periksa koneksi ke service agent dan server data pasar, lalu coba lagi.");
             await pump.RecordFailureAsync(@case.Id, $"failed-{@case.Id:N}", code, message);
-            return @case.Id;
+            return;
         }
 
         await cases.SetRunIdAsync(@case.Id, runId, CancellationToken.None);
         _ = pump.Start(@case.Id, runId, @case.Provider);
-        return @case.Id;
     }
+
+    /// <summary>Ends a case that never reached the agent (for example, screening found nothing).</summary>
+    public async Task FailBeforeStartAsync(Guid caseId, AgentErrorCode code, string message)
+    {
+        var runId = $"failed-{caseId:N}";
+        await cases.SetRunIdAsync(caseId, runId, CancellationToken.None);
+        await pump.RecordFailureAsync(caseId, runId, code, message);
+    }
+
+    public Task<List<InvestigationCase>> ListJobsAsync(CancellationToken ct) => cases.ListJobsAsync(100, ct);
+
+    public Task<int> CountJobsAwaitingAsync(string user, CancellationToken ct) => cases.CountJobsAwaitingAsync(user, ct);
 
     /// <summary>
     /// Records an analyst's decision and resumes the agent. When two analysts decide the same
@@ -188,7 +230,8 @@ public sealed class InvestigationService(
     /// <summary>Cases waiting for an analyst, the longest waiting first.</summary>
     public Task<List<InvestigationCase>> ListAwaitingApprovalAsync(CancellationToken ct) => cases.ListAwaitingApprovalAsync(ct);
 
-    public Task<List<InvestigationCase>> ListCasesAsync(CancellationToken ct) => cases.ListRecentAsync(100, ct);
+    /// <summary>UMA investigations only; jobs are listed on /jobs.</summary>
+    public Task<List<InvestigationCase>> ListCasesAsync(CancellationToken ct) => cases.ListInvestigationsAsync(100, ct);
 
     /// <summary>The raw output of one tool call, for the evidence view. Null when the agent sent none.</summary>
     public Task<ToolResultPreview?> GetPreviewAsync(Guid caseId, string toolCallId, CancellationToken ct) =>

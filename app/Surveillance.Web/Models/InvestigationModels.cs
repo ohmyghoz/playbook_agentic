@@ -109,6 +109,13 @@ public class ApprovalForm
 
 public static class CaseStatusText
 {
+    public static string Label(CaseStatus status, bool job) => (job, status) switch
+    {
+        (true, CaseStatus.Approved) => "Laporan disetujui",
+        (true, CaseStatus.Rejected) => "Laporan ditolak",
+        _ => Label(status),
+    };
+
     public static string Label(CaseStatus status) => status switch
     {
         CaseStatus.Starting => "Memulai",
@@ -171,4 +178,20 @@ public static class DurationText
         if (t.TotalMinutes >= 1) return $"{(int)t.TotalMinutes} menit";
         return $"{t.Seconds} detik";
     }
+}
+
+public class JobListViewModel
+{
+    public List<InvestigationCase> Jobs { get; init; } = [];
+    public required Surveillance.Web.Patterns.PatternDetectionOptions Options { get; init; }
+    public required string ActiveAgent { get; init; }
+    public string? Message { get; init; }
+}
+
+public class JobDetailsViewModel
+{
+    public required InvestigationCase Job { get; init; }
+    public string Transport { get; init; } = "sse";
+
+    public PatternJob? Screened => Job.JobJson is null ? null : JsonSerializer.Deserialize<PatternJob>(Job.JobJson, AgentJson.Options);
 }

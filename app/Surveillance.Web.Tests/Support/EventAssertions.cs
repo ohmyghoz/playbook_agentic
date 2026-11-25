@@ -104,6 +104,12 @@ public static class EventAssertions
     /// </summary>
     public static void AssertStepsAndEvidence(IReadOnlyList<AgentEvent> events)
     {
+        if (IsPatternDetection(events))
+        {
+            AssertWorkers(events);
+            return; // the five UMA stages do not apply; workers do (asd-pattern-detection.md)
+        }
+
         if (events.Count > 1)
         {
             Assert.Equal(AgentEventType.StepStarted, events[1].Type);
@@ -140,6 +146,45 @@ public static class EventAssertions
                         Assert.True(finished.Source is { Server: ToolEvidence.Server }, $"MCP result {finished.ToolCallId} ({finished.ToolName}) has no source.");
                     }
 
+                    break;
+            }
+        }
+    }
+
+    public static bool IsPatternDetection(IReadOnlyList<AgentEvent> events) =>
+        events.Count > 0 && events[0].Type == AgentEventType.RunStarted
+                         && events[0].PayloadAs<RunStartedPayload>().UseCase == UseCase.PatternDetection;
+
+    /// <summary>
+    /// CHANGE-002 rules: every event names its agent; each worker_started has one worker_finished;
+    /// a worker's tool calls fall between the two; no worker is open at approval or at the end.
+    /// </summary>
+    public static void AssertWorkers(IReadOnlyList<AgentEvent> events)
+    {
+        var open = new Dictionary<string, WorkerStartedPayload>();
+        var seen = new HashSet<string>();
+        foreach (var e in events)
+        {
+            Assert.False(string.IsNullOrEmpty(e.AgentName), $"Event {e.Sequence} ({e.Type}) has no agentName.");
+            switch (e.Type)
+            {
+                case AgentEventType.WorkerStarted:
+                    var started = e.PayloadAs<WorkerStartedPayload>();
+                    Assert.Equal(started.WorkerId, e.AgentName);
+                    Assert.True(seen.Add(started.WorkerId), $"Worker {started.WorkerId} started twice.");
+                    open[started.WorkerId] = started;
+                    break;
+                case AgentEventType.WorkerFinished:
+                    var finished = e.PayloadAs<WorkerFinishedPayload>();
+                    Assert.True(open.Remove(finished.WorkerId, out var start), $"Worker {finished.WorkerId} finished without starting.");
+                    Assert.Equal(start.Role, finished.Role);
+                    break;
+                case AgentEventType.ToolCallStarted or AgentEventType.ToolCallFinished when e.AgentName != "orchestrator":
+                    Assert.True(open.ContainsKey(e.AgentName!), $"Tool event {e.Sequence} of {e.AgentName} outside its worker.");
+                    break;
+                case AgentEventType.ApprovalRequired or AgentEventType.Done or AgentEventType.Error:
+                    Assert.Empty(open);
+                    Assert.Equal("orchestrator", e.AgentName);
                     break;
             }
         }

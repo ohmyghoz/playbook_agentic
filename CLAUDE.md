@@ -156,9 +156,9 @@ Nama tool mengikuti `contracts/mcp-tools.md`. Jika nama di server berbeda, pakai
 
 | Peran | Tool MCP IDX |
 |---|---|
-| Penyaringan awal | `idx_bandar_screen`, `idx_screen`, `idx_history` |
+| Penyaringan awal | `idx_screen`, `idx_history` (`idx_bandar_screen` tidak dipakai selama IPOT membalas HTTP 502) |
 | Worker saham | `idx_history`, `idx_technical`, `idx_broker`, `idx_bandar`, `idx_foreign`, `idx_news`, `idx_corporate_actions` |
-| Worker broker | `idx_bandar_broker`, `idx_market_brokers`, `idx_members`, `idx_broker` |
+| Worker broker | `idx_broker` (Stockbit), `idx_market_brokers`, `idx_members`, `idx_screen` (`idx_bandar_broker` tidak dipakai selama IPOT membalas HTTP 502) |
 | Worker kepemilikan | `idx_ownership_ticker`, `idx_ownership_graph`, `idx_ownership_entity`, `idx_ownership_changes` |
 | Orchestrator | tidak memanggil tool data, hanya mendelegasikan dan menilai |
 
@@ -401,7 +401,7 @@ Selesai jika: contract test kedua use case lulus atau setiap kegagalan dijelaska
 - [x] Tahap 10: pola UI (Bab 11)
 - [x] Tahap 11: approval (Bab 12)
 - [x] Tahap 12: durabilitas (Bab 13)
-- [ ] Tahap 13: use case 2 di aplikasi, dengan agent tiruan
+- [x] Tahap 13: use case 2 di aplikasi, dengan agent tiruan
 - [ ] Tahap 14: use case 2 di tiga solusi
 - [ ] Tahap 15: contract test use case 2 dan penutupan
 
@@ -470,4 +470,8 @@ Tambahkan satu baris per keputusan: tanggal, keputusan, alasan singkat.
 - 2026-11-25: Tahap 12: repository `ICaseRepository`, `IEventRepository`, `IApprovalRepository`, ditambah `ISettingsRepository` untuk halaman Setting dan `DatabaseMigrator`, semuanya di `Data/`. Query bersyarat dan transaksi pindah apa adanya. `RepositoryBoundaryTests` menjaga agar tidak ada `DbContext` di luar `Data/` dan `Program.cs`.
 - 2026-11-25: Tahap 12c: kode error baru `run_interrupted` di `events.schema.json` (`contracts/CHANGE-003-run-interrupted.md`), menafsirkan permintaan Tahap 12c "kode error yang jelas dan bisa diulang" sebagai persetujuan perubahan kontrak ini. Dipakai aplikasi (`RunPump` dengan `afterRestart`), MAF, LangGraph, dan ADK.
 - 2026-11-25: Tahap 12d: penggabungan token menyisakan lompatan `sequence` pada kasus yang sudah selesai. Ini diterima karena tidak ada klien yang menyambung kembali ke run yang sudah selesai, dan putar ulang membuang berdasarkan `sequence`. Penghapusan setelah 90 hari hanya menyentuh event dan pratinjau; kasus, keputusan, dan audit tetap ada. Pembersihan database service Python didokumentasikan di `docs/RETENTION.md` tanpa jadwal otomatis.
+- 2026-11-25: Tahap 13: `idx_bandar_screen` dan `idx_bandar_broker` dicoba dan masih gagal (IPOT HTTP 502), jadi tabel tool per peran diperbarui sesuai keputusan cadangan. Penyaringan awal memakai `idx_screen` (`ret1m`) lalu `idx_history` untuk perubahan 10 hari bursa. Worker broker mencari jejak dengan `idx_broker` pada saham kandidat dan saham ramai (`idx_screen` preset high-volume). `idx_ownership_ticker` sudah berisi data (register 30 Oktober 2026).
+- 2026-11-25: Tahap 13 (CHANGE-002): job use case 2 disimpan sebagai `InvestigationCase` dengan `UseCase = "pattern_detection"`, supaya `RunPump`, event, approval, pegangan kasus, kedaluwarsa, dan audit dipakai ulang tanpa salinan. `IAgentClient` tidak berubah. `InvestigationRequest` mendapat `UseCase` dan `Job` opsional, dan aplikasi tetap mengisi `Symbol`, `AnomalyDate`, dan `Trigger` (kandidat pertama, akhir jendela) supaya adapter UMA tidak rusak. Laporan memakai `PatternReport` di `approval_required.report` (memo atau laporan, `oneOf`).
+- 2026-11-25: Tahap 13: penyaringan awal (`CandidateScreening`) memanggil MCP idx langsung, tanpa agent, lewat `McpMarketData` (endpoint dan token sama dengan MAF). `PatternDetection:MarketData = fake` memakai data tiruan untuk test. Job dibuat oleh request, sedangkan penyaringan dan start agent berjalan di `PatternJobRunner` (BackgroundService); job yang belum disaring saat restart diantrekan lagi. Hanya solusi dengan `SupportsPatternDetection` (sekarang hanya fake) yang ditawari job.
+- 2026-11-25: Tahap 13: notifikasi job lewat SignalR `Clients.User` (NameIdentifier = nama akun) dari `JobNotifier`; klien SignalR dimuat di layout untuk pengguna yang login. Ditemukan saat uji browser: transport SSE harus mendaftarkan `worker_started`/`worker_finished`, karena `EventSource` membuang tipe yang tidak didaftarkan sementara `Last-Event-ID` tetap maju. `SseTransportCatalogTests` menjaga daftar itu sama dengan skema.
 - 2026-11-24: Catatan keamanan: server Azure SQL punya aturan firewall `AllowAll-Experiment` (0.0.0.0–255.255.255.255). Belum diubah; sebaiknya dihapus dan diganti aturan per IP.

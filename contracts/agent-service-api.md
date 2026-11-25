@@ -52,7 +52,13 @@ untuk analis ada di event `error`.
 
 Memulai run baru. Service langsung menjalankan agent di latar belakang.
 
-Request: `InvestigationRequest`.
+Request: `InvestigationRequest`. Field `useCase` memilih agent: kosong atau
+`uma_investigation` untuk investigator UMA, `pattern_detection` untuk deteksi
+pola (CHANGE-002). Untuk `pattern_detection`, agent membaca `job`
+(`$defs/PatternJob` di `events.schema.json`). Skema tidak mewajibkan
+`symbol`, `anomalyDate`, dan `trigger`, tetapi aplikasi tetap mengisinya dengan
+kandidat pertama, akhir jendela, dan aturan penyaringan, supaya klien yang
+ditulis untuk UMA tidak rusak.
 
 ```json
 {
@@ -70,7 +76,22 @@ Respons `201 Created`:
 { "runId": "lg-5b0c2f1e9d8a4c7b" }
 ```
 
-Error: `400 invalid_input`, `503 not_ready`.
+Contoh deteksi pola:
+
+```json
+{
+  "caseId": "f1c7a5f0-3a8e-4f43-9c1a-0b9a3a6f2d10",
+  "useCase": "pattern_detection",
+  "job": {
+    "windowStart": "2026-11-11", "windowEnd": "2026-11-24",
+    "candidates": [ { "symbol": "VOKS", "priceChangePct": 31.4 } ],
+    "limits": { "maxDepth": 2, "maxStocks": 15, "brokersPerStock": 3, "maxStepsPerWorker": 12,
+                "maxToolCalls": 150, "maxMinutes": 20, "minTopBuyerSharePct": 40, "maxBrokerSpreadPct": 30 }
+  }
+}
+```
+
+Error: `400 invalid_input` (termasuk `useCase` yang belum didukung service), `503 not_ready`.
 
 Jika agent gagal sebelum sempat bekerja, misalnya server MCP tidak bisa
 dihubungi, service tetap mengembalikan `201`. Kegagalannya muncul sebagai
@@ -165,7 +186,7 @@ Respons `503` dengan bentuk error di atas jika service belum siap.
 ## Perilaku saat service dinyalakan ulang
 
 - Run yang sedang menunggu approval tetap menunggu dan bisa dilanjutkan dengan `resume`.
-- Run yang sedang berjalan saat service mati tidak bisa dilanjutkan dengan aman. Saat service menyala, run itu ditutup dengan `tool_call_finished` (`status: error`, kode `internal`) untuk tool call yang terbuka, lalu event `error` dengan kode `internal` dan `retryable: true`.
+- Run yang sedang berjalan saat service mati tidak bisa dilanjutkan dengan aman. Saat service menyala, run itu ditutup dengan `tool_call_finished` (`status: error`, kode `run_interrupted`) untuk tool call yang terbuka, lalu event `error` dengan kode `run_interrupted` dan `retryable: true` (CHANGE-003; sebelumnya `internal`).
 - Run yang sudah selesai tetap bisa diputar ulang lewat `GET /runs/{runId}/events`.
 
 ## Pemetaan ke `IAgentClient`
