@@ -162,24 +162,11 @@ public partial class PatternJobTests(SurveillanceFactory factory) : IClassFixtur
     }
 
     [Fact]
-    public async Task A_solution_without_pattern_detection_is_refused_with_a_clear_message()
+    public void Every_solution_runs_pattern_detection_since_tahap_14()
     {
-        var selection = factory.Services.GetRequiredService<AgentSelection>();
-        try
-        {
-            await selection.SetActiveAsync("adk", default);
-            var client = Client();
-            var token = AntiforgeryToken().Match(await client.GetStringAsync("/jobs")).Groups[1].Value;
-            var response = await client.PostAsync("/jobs/start", new FormUrlEncodedContent(new Dictionary<string, string>
-            {
-                ["__RequestVerificationToken"] = token,
-            }));
-            Assert.Contains("Solusi Google ADK belum mendukung deteksi pola.", await response.Content.ReadAsStringAsync());
-        }
-        finally
-        {
-            await selection.SetActiveAsync("fake", default);
-        }
+        // A solution without SupportsPatternDetection would be refused by PatternJobRunner with a clear message.
+        var registry = factory.Services.GetRequiredService<Surveillance.Web.Agents.AgentClientRegistry>();
+        Assert.All(registry.Providers, p => Assert.True(p.SupportsPatternDetection, p.Key));
     }
 
     [GeneratedRegex("name=\"__RequestVerificationToken\" type=\"hidden\" value=\"([^\"]+)\"")]

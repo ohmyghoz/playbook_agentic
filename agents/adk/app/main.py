@@ -18,7 +18,7 @@ from pydantic import ValidationError
 from .config import Settings
 from .contract import ApprovalDecision, InvestigationRequest
 from .instructions import ALLOWED_MCP_TOOLS
-from .runs import McpUnavailable, RunManager, RunStore, ServiceError
+from .runs import PATTERN_APP, McpUnavailable, RunManager, RunStore, ServiceError
 
 log = logging.getLogger(__name__)
 
@@ -36,6 +36,8 @@ class AdkEngine:
             from google.adk.tools.mcp_tool import McpToolset, StreamableHTTPConnectionParams
 
             from .agent import build_agent
+            from .pattern_agents import build_report_agent
+            from .pattern_orchestrator import ROLE_TOOLS
 
         self._settings = settings
         db_path = (settings.data_dir / "sessions.db").as_posix()
@@ -47,6 +49,7 @@ class AdkEngine:
             script = Script(settings.script_path)
             self.toolset = None
             model, tools = ScriptedLlm(script=script), canned_tools(script)
+            self.role_tools = {role: [t for t in tools if t.name in names] for role, names in ROLE_TOOLS.items()}
         else:
             self.toolset = McpToolset(
                 connection_params=StreamableHTTPConnectionParams(
@@ -56,8 +59,16 @@ class AdkEngine:
             model = Gemini(model=settings.model_name, retry_options=types.HttpRetryOptions(
                 attempts=3, initial_delay=2.0, max_delay=20.0, http_status_codes=[429, 500, 502, 503, 504]))
             tools = self.toolset
+            # Pattern-detection workers: one toolset per role, so each worker sees only its role's tools.
+            self.role_tools = {role: McpToolset(
+                connection_params=StreamableHTTPConnectionParams(
+                    url=settings.mcp_endpoint, headers={"Authorization": f"Bearer {settings.mcp_token or ''}"}, timeout=30),
+                tool_filter=sorted(names)) for role, names in ROLE_TOOLS.items()}
+        self.model = model
         self.runner = Runner(app_name=settings.app_name, agent=build_agent(model, tools, settings),
                              session_service=self.sessions)
+        # The report writer keeps its paused approval in the same DatabaseSessionService, under its own app name.
+        self.report_runner = Runner(app_name=PATTERN_APP, agent=build_report_agent(model, settings), session_service=self.sessions)
 
     async def check_tools(self) -> None:
         if self.toolset is None:
@@ -74,6 +85,10 @@ class AdkEngine:
 
     async def close(self) -> None:
         await self.runner.close()
+        await self.report_runner.close()
+        for toolset in getattr(self, "role_tools", {}).values():
+            if hasattr(toolset, "close"):
+                await toolset.close()
 
 
 def _error(status: int, code: str, message: str) -> JSONResponse:

@@ -77,3 +77,36 @@ Run yang sedang berjalan saat proses berhenti ditutup dengan `error` kode
 `run_interrupted` dan `retryable: true`, bukan lagi `internal`. Lihat
 `docs/RESTART.md`.
 `RunManager.recover` menulisnya untuk run berstatus `running` saat service start.
+
+## Use case 2: deteksi pola (Tahap 14, CHANGE-002)
+
+Run dengan `useCase: pattern_detection` dijalankan oleh `RunManager._execute_pattern`
+(`app/runs.py`) dengan agent dari `app/pattern_agents.py`:
+
+```text
+PatternOrchestrator (kode) -> worker_n (LlmAgent, Runner + InMemorySessionService, maks 3 sekaligus)
+                           -> penyusun_laporan (LlmAgent, submit_report + Tool Confirmation,
+                              DatabaseSessionService, app "pattern_report") -> jeda analis
+```
+
+| Bagian | ADK |
+|---|---|
+| Orchestrator | `PatternOrchestrator` (`app/pattern_orchestrator.py`), salinan sama dari LangGraph; padanan `PatternOrchestrator.cs` di MAF. |
+| Worker | Satu `LlmAgent` bernama `worker_{n}` per worker. Tool-nya satu `McpToolset` dengan `tool_filter` sesuai peran, ditambah `FunctionTool(finish_worker)`. Setiap worker punya `Runner` dan session di memori, karena worker tidak perlu bertahan lebih lama dari job. |
+| Batas | Langkah per worker dan `JobBudget` dicek di `before_tool_callback`, dengan aturan peringatan yang sama seperti UMA. `after_tool_callback` menambahkan `[toolCallId: ...]` di awal hasil tool, supaya worker bisa merujuk bukti. |
+| Penyusun laporan | `SubmitReportTool` meniru `SubmitMemoTool`: memvalidasi laporan (`validate_report`), lalu `request_confirmation` dengan keputusan analis di `payload`. Fakta orchestrator dan id tool call yang sah disimpan di state session (`facts`, `known_call_ids`). |
+
+| Event | Asal |
+|---|---|
+| `worker_started`, `worker_finished` | `_execute_pattern`, saat worker mulai dan selesai. `RunInfo.open_workers` menyimpan worker yang masih berjalan. |
+| `tool_call_*` worker | Event ADK dari runner worker (`function_call`, `function_response`). `RunInfo.call_agents` mencatat agent setiap tool call. |
+| `token` | Narasi orchestrator dan teks `penyusun_laporan`. Teks worker dibuang. |
+| `agentName` | `RunManager._emit`: id worker untuk event worker, `orchestrator` untuk event lain. |
+
+**Ketahanan.**
+- Jeda approval laporan bertahan setelah restart, karena session penyusun laporan ada di `DatabaseSessionService` dan `RunInfo.request` menyimpan `useCase`.
+- Bila service mati saat worker berjalan, `recover` menutup worker yang terbuka, lalu run berakhir dengan `run_interrupted`.
+
+**Uji live, 25 November 2026, `gemini-3.8-flash`, 3 kandidat:**
+- Jalur penuh: ketiga worker saham selesai `ok`. Laporan ditolak validasi dua kali (klaster dan rujukan bukti), diterima pada percobaan ketiga, lalu disetujui (28 panggilan data).
+- Dengan batas job 4 tool call: ketiga worker `limit_reached`. Laporan parsial mencatat "Batas 4 panggilan data per job tercapai.", lalu ditolak analis untuk menutup job (`done`, `rejected`).

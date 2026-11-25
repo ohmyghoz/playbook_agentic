@@ -25,12 +25,14 @@ from .config import Settings
 from .contract import PAUSE_TYPES, TERMINAL_TYPES, ApprovalDecision, InvestigationRequest, event, tool_finished
 from .steps import next_step, step_payload
 from .instructions import SUBMIT_MEMO
+from .pattern_orchestrator import ORCHESTRATOR, REPORT_CONTINUE, SUBMIT_REPORT, WORKER_CONTINUE, JobBudget, PatternOrchestrator, WorkerOutcome
 from .summarizer import summarize
 
 log = logging.getLogger(__name__)
 
 TOKEN_BATCH_CHARS = 60
 USER_ID = "analyst"
+PATTERN_APP = "pattern_report"  # app name of the report writer's sessions (pattern detection)
 CONFIRMATION_CALL = "adk_request_confirmation"
 
 
@@ -65,6 +67,13 @@ class RunInfo:
     open_calls: dict[str, str] = field(default_factory=dict)  # toolCallId -> toolName
     seen_calls: list[str] = field(default_factory=list)
     step: str | None = None  # last workflow stage announced with step_started
+    call_agents: dict[str, str] = field(default_factory=dict)  # toolCallId -> agentName (pattern detection)
+    open_workers: dict[str, str] = field(default_factory=dict)  # workerId -> role, while running
+    tool_calls_used: int = 0  # pattern detection: workers' MCP calls
+
+    @property
+    def is_pattern(self) -> bool:
+        return self.request.get("useCase") == "pattern_detection"
 
 
 class RunStore:
@@ -125,6 +134,17 @@ class RunManager:
     # ---- contract operations -------------------------------------------------------
 
     async def start(self, request: InvestigationRequest) -> str:
+        if request.is_pattern_detection:
+            if request.job is None:
+                raise ServiceError(400, "invalid_input", "useCase pattern_detection butuh job.")
+            run = RunInfo(run_id=f"adk-{uuid.uuid4().hex}", request=request.dump())
+            await self._store.save(run)
+            await self._emit(run, "run_started", {"caseId": request.case_id, "useCase": "pattern_detection",
+                                                  "maxToolCalls": request.job.limits.max_tool_calls})
+            self._aborts[run.run_id] = asyncio.Event()
+            self._tasks[run.run_id] = asyncio.create_task(self._execute_pattern(run.run_id))
+            return run.run_id
+
         run = RunInfo(run_id=f"adk-{uuid.uuid4().hex}", request=request.dump())
         await self._engine.sessions.create_session(
             app_name=self._settings.app_name, user_id=USER_ID, session_id=run.run_id,
@@ -166,6 +186,7 @@ class RunManager:
             run = await self._require(run_id)
             if run.status == "paused":
                 await self._close_open_calls(run, "cancelled", "Dihentikan oleh pengguna.")
+                await self._close_open_workers(run, "cancelled", "Dihentikan oleh pengguna.")
                 await self._emit(run, "done", {"outcome": "cancelled", "toolCallsUsed": await self._tool_calls_used(run)})
 
     async def events(self, run_id: str, after: int) -> AsyncIterator[dict[str, Any] | None]:
@@ -193,6 +214,7 @@ class RunManager:
         """Closes runs that were streaming when the service stopped; paused runs stay resumable."""
         for run in await self._store.by_status("running"):
             await self._close_open_calls(run, "run_interrupted", "Service berhenti di tengah run.")
+            await self._close_open_workers(run, "error", "Service berhenti di tengah run.")
             await self._emit(run, "error", {"code": "run_interrupted", "retryable": True,
                                             "message": "Investigasi terputus karena service agent dinyalakan ulang saat agent sedang bekerja. Data yang sudah masuk tetap tersimpan. Pilih Mulai ulang dengan data yang sama untuk menjalankannya lagi."})
 
@@ -212,6 +234,9 @@ class RunManager:
         run = await self._require(run_id)
         abort = self._aborts[run_id]
         tokens: list[str] = []
+        # Pattern detection: this loop drives the report writer; UMA: the investigator.
+        runner = self._engine.report_runner if run.is_pattern else self._engine.runner
+        draft = "report" if run.is_pattern else "memo"
 
         async def flush() -> None:
             if tokens:
@@ -221,7 +246,8 @@ class RunManager:
 
         try:
             try:
-                await self._engine.check_tools()
+                if not run.is_pattern:
+                    await self._engine.check_tools()
             except McpUnavailable:
                 log.exception("MCP unavailable for run %s", run_id)
                 await self._emit(run, "error", {"code": "mcp_unavailable", "retryable": True,
@@ -233,7 +259,7 @@ class RunManager:
                 confirmation = None
                 called_tools = False
                 partial_text_seen = False
-                async for e in self._engine.runner.run_async(
+                async for e in runner.run_async(
                         user_id=USER_ID, session_id=run_id, new_message=message,
                         run_config=RunConfig(streaming_mode=StreamingMode.SSE), abort_signal=abort):
                     if abort.is_set():
@@ -271,14 +297,14 @@ class RunManager:
                     await self._emit(run, "done", {"outcome": "cancelled", "toolCallsUsed": await self._tool_calls_used(run)})
                     return
 
-                state = await self._state(run_id)
+                state = await self._state(run_id, run)
                 if confirmation is not None and state.get("pending"):
                     pending = state["pending"]
                     run.pending = {"approvalId": pending["approvalId"], "toolCallId": pending["toolCallId"],
                                    "confirmationId": confirmation.id}
                     run.status = "paused"
                     await self._emit(run, "approval_required", {"approvalId": pending["approvalId"],
-                                                                "revision": pending["revision"], "memo": pending["memo"]})
+                                                                "revision": pending["revision"], draft: pending[draft]})
                     return
                 if error := state.get("error"):
                     await self._close_open_calls(run, error["code"], "Run berhenti.")
@@ -287,7 +313,7 @@ class RunManager:
                 if outcome := state.get("outcome"):
                     await self._close_open_calls(run, "internal", "Run selesai.")
                     await self._emit(run, "done", {"outcome": outcome, "toolCallsUsed": state.get("tool_calls_used", 0),
-                                                   "memo": state.get("memo")})
+                                                   draft: state.get(draft)})
                     return
 
                 # The model answered with text only: treat it as narration and ask it to go on.
@@ -297,9 +323,10 @@ class RunManager:
                     await self._emit(run, "error", {"code": "model_error", "retryable": True,
                                                     "message": "Agent berhenti tanpa menyusun memo. Coba lagi."})
                     return
-                message = _user_text(instructions.CONTINUE)
+                message = _user_text(REPORT_CONTINUE if run.is_pattern else instructions.CONTINUE)
         except asyncio.CancelledError:
             await self._close_open_calls(run, "cancelled", "Dihentikan oleh pengguna.")
+            await self._close_open_workers(run, "cancelled", "Dihentikan oleh pengguna.")
             await self._emit(run, "done", {"outcome": "cancelled", "toolCallsUsed": await self._tool_calls_used(run)})
         except (genai_errors.APIError, ModelFailure):
             log.exception("Model call failed for run %s", run_id)
@@ -313,19 +340,21 @@ class RunManager:
             await self._emit(run, "error", {"code": "internal", "retryable": False,
                                             "message": "Terjadi kesalahan pada agent. Mulai investigasi baru untuk mencoba lagi."})
 
-    async def _started(self, run: RunInfo, call_id: str, name: str, args: dict[str, Any]) -> None:
+    async def _started(self, run: RunInfo, call_id: str, name: str, args: dict[str, Any], agent: str | None = None) -> None:
         if call_id in run.seen_calls:
             return
         run.seen_calls.append(call_id)
         run.open_calls[call_id] = name
-        if name == SUBMIT_MEMO:
-            args = {"memo": "(lihat approval_required)"}
-        await self._emit(run, "tool_call_started", {"toolCallId": call_id, "toolName": name, "arguments": args})
+        if agent:
+            run.call_agents[call_id] = agent
+        if name in (SUBMIT_MEMO, SUBMIT_REPORT):
+            args = {"draft": "(lihat approval_required)"}
+        await self._emit(run, "tool_call_started", {"toolCallId": call_id, "toolName": name, "arguments": args}, agent)
 
     async def _on_response(self, run: RunInfo, call_id: str, name: str, response: dict[str, Any]) -> None:
         if call_id not in run.open_calls:
             return
-        if name == SUBMIT_MEMO:
+        if name in (SUBMIT_MEMO, SUBMIT_REPORT):
             if response.get("status") == "waiting":
                 return  # still open until the analyst decides
             payload = (tool_finished(call_id, name, False, response.get("summary", "Memo tidak sesuai format."),
@@ -335,26 +364,127 @@ class RunManager:
             text = response["result"] if isinstance(response.get("result"), str) else json.dumps(response, ensure_ascii=False)
             payload = summarize(call_id, name, text)
         run.open_calls.pop(call_id)
-        await self._emit(run, "tool_call_finished", payload)
+        await self._emit(run, "tool_call_finished", payload, run.call_agents.get(call_id))
 
-    async def _close_open_calls(self, run: RunInfo, code: str, message: str) -> None:
+    async def _close_open_calls(self, run: RunInfo, code: str, message: str, agent: str | None = None) -> None:
         for call_id, name in list(run.open_calls.items()):
+            if agent is not None and run.call_agents.get(call_id) != agent:
+                continue
             run.open_calls.pop(call_id)
-            await self._emit(run, "tool_call_finished", tool_finished(call_id, name, False, message, code, message))
+            await self._emit(run, "tool_call_finished", tool_finished(call_id, name, False, message, code, message),
+                             run.call_agents.get(call_id))
 
-    async def _state(self, run_id: str) -> dict[str, Any]:
-        session = await self._engine.sessions.get_session(app_name=self._settings.app_name, user_id=USER_ID,
-                                                          session_id=run_id)
+    async def _close_open_workers(self, run: RunInfo, status: str, summary: str) -> None:
+        """Every worker still running is closed before the run ends (asd-pattern-detection.md)."""
+        for worker_id, role in list(run.open_workers.items()):
+            await self._close_open_calls(run, "cancelled" if status == "cancelled" else "internal", summary, worker_id)
+            run.open_workers.pop(worker_id)
+            await self._emit(run, "worker_finished", {"workerId": worker_id, "role": role, "status": status, "summary": summary},
+                             worker_id)
+
+    async def _state(self, run_id: str, run: RunInfo | None = None) -> dict[str, Any]:
+        app = PATTERN_APP if run is not None and run.is_pattern else self._settings.app_name
+        session = await self._engine.sessions.get_session(app_name=app, user_id=USER_ID, session_id=run_id)
         return dict(session.state) if session else {}
 
     async def _tool_calls_used(self, run: RunInfo) -> int:
         try:
-            return int((await self._state(run.run_id)).get("tool_calls_used", 0))
+            return int((await self._state(run.run_id, run)).get("tool_calls_used", run.tool_calls_used))
         except Exception:
-            return 0
+            return run.tool_calls_used
 
-    async def _emit(self, run: RunInfo, type_: str, payload: dict[str, Any]) -> None:
+    # ---- pattern detection (CHANGE-002) --------------------------------------------
+
+    async def _execute_pattern(self, run_id: str) -> None:
+        """Workers first (PatternOrchestrator, ADK agents), then the report writer in the approval loop."""
+        from google.adk.runners import Runner
+        from google.adk.sessions import InMemorySessionService
+
+        from .pattern_agents import build_worker_agent
+
+        run = await self._require(run_id)
+        abort = self._aborts[run_id]
+        job = InvestigationRequest.model_validate(run.request).job
+        budget = JobBudget(job.limits.max_tool_calls, job.limits.max_minutes)
+        known: list[str] = []
+        counter = {"n": 0}
+
+        async def narrate(text: str) -> None:
+            await self._emit(run, "token", {"text": text})
+
+        async def run_worker(worker: dict[str, Any]) -> WorkerOutcome:
+            worker_id = worker["workerId"]
+            run.open_workers[worker_id] = worker["role"]
+            await self._emit(run, "worker_started", worker, worker_id)
+            counter["n"] += 1
+            outcome: dict[str, Any] = {}
+            try:
+                agent = build_worker_agent(counter["n"], self._engine.model, self._engine.role_tools[worker["role"]],
+                                           worker, job, budget, known, outcome)
+                runner = Runner(app_name="pattern_worker", agent=agent, session_service=InMemorySessionService())
+                await runner.session_service.create_session(app_name="pattern_worker", user_id=USER_ID, session_id=worker_id)
+                message = _user_text("Mulai tugas Anda.")
+                for _ in range(3):  # two reminders to call finish_worker before the worker counts as failed
+                    async for e in runner.run_async(user_id=USER_ID, session_id=worker_id, new_message=message,
+                                                    abort_signal=abort):
+                        if e.error_code:
+                            raise ModelFailure(f"{e.error_code}: {e.error_message}")
+                        for fc in e.get_function_calls():
+                            if fc.name != "finish_worker":
+                                await self._started(run, fc.id, fc.name, dict(fc.args or {}), worker_id)
+                        for fr in e.get_function_responses():
+                            if fr.name != "finish_worker":
+                                await self._on_response(run, fr.id, fr.name, fr.response or {})
+                    if outcome.get("report") or outcome.get("exceeded") or abort.is_set():
+                        break
+                    message = _user_text(WORKER_CONTINUE)
+            except Exception:  # a failed worker does not fail the job (asd-pattern-detection.md)
+                log.exception("Worker %s failed in run %s", worker_id, run_id)
+            report = outcome.get("report")
+            limited = outcome.get("warned") or outcome.get("exceeded")
+            status = "limit_reached" if limited else "ok" if report else "error"
+            summary = report.summary if report else (
+                f"Batas {job.limits.max_steps_per_worker} langkah worker tercapai sebelum temuan dilaporkan." if limited
+                else "Worker berhenti tanpa melaporkan temuan.")
+            await self._close_open_calls(run, "step_limit" if limited else "internal", "Panggilan tidak selesai.", worker_id)
+            if run.open_workers.pop(worker_id, None) is not None:
+                payload = {"workerId": worker_id, "role": worker["role"], "status": status, "summary": summary[:500]}
+                if report and report.leads:
+                    payload["leads"] = [lead.dump() for lead in report.leads]
+                await self._emit(run, "worker_finished", payload, worker_id)
+            return WorkerOutcome(worker, status, report)
+
+        try:
+            facts = (await PatternOrchestrator(job, budget, run_worker, narrate).run()).dump()
+            run.tool_calls_used = budget.used
+            if abort.is_set():
+                await self._close_open_workers(run, "cancelled", "Dihentikan oleh pengguna.")
+                await self._emit(run, "done", {"outcome": "cancelled", "toolCallsUsed": budget.used})
+                return
+            await self._engine.sessions.create_session(
+                app_name=PATTERN_APP, user_id=USER_ID, session_id=run_id,
+                state={"request": run.request, "facts": facts, "known_call_ids": known, "revision": -1,
+                       "tool_calls_used": budget.used})
+            await self._store.save(run)
+        except asyncio.CancelledError:
+            await self._close_open_workers(run, "cancelled", "Dihentikan oleh pengguna.")
+            await self._emit(run, "done", {"outcome": "cancelled", "toolCallsUsed": budget.used})
+            return
+        except Exception:
+            log.exception("Run %s failed", run_id)
+            await self._close_open_workers(run, "error", "Terjadi kesalahan.")
+            await self._emit(run, "error", {"code": "internal", "retryable": False,
+                                            "message": "Terjadi kesalahan pada agent. Mulai job baru untuk mencoba lagi."})
+            return
+
+        await self._execute(run_id, _user_text("Hasil worker:\n" + json.dumps(facts, ensure_ascii=False)))
+
+    async def _emit(self, run: RunInfo, type_: str, payload: dict[str, Any], agent: str | None = None) -> None:
         if run.status == "finished":
+            return
+        if run.is_pattern:
+            # Pattern detection names every event's agent and has no UMA stages (CHANGE-002).
+            await self._emit_one(run, type_, payload, agent or ORCHESTRATOR)
             return
         step = next_step(run.step, type_, payload)
         if step and type_ != "run_started":
@@ -363,13 +493,13 @@ class RunManager:
         if step and type_ == "run_started":
             await self._emit_one(run, "step_started", step_payload(step))
 
-    async def _emit_one(self, run: RunInfo, type_: str, payload: dict[str, Any]) -> None:
+    async def _emit_one(self, run: RunInfo, type_: str, payload: dict[str, Any], agent: str | None = None) -> None:
         if type_ == "step_started":
             run.step = payload["step"]
         run.sequence += 1
         if type_ in TERMINAL_TYPES:
             run.status, run.pending = "finished", None
-        new_event = event(run.run_id, run.sequence, type_, {k: v for k, v in payload.items() if v is not None})
+        new_event = event(run.run_id, run.sequence, type_, {k: v for k, v in payload.items() if v is not None}, agent)
         await self._store.save(run, new_event)
         self._signals.pop(run.run_id, asyncio.Event()).set()
 

@@ -402,7 +402,7 @@ Selesai jika: contract test kedua use case lulus atau setiap kegagalan dijelaska
 - [x] Tahap 11: approval (Bab 12)
 - [x] Tahap 12: durabilitas (Bab 13)
 - [x] Tahap 13: use case 2 di aplikasi, dengan agent tiruan
-- [ ] Tahap 14: use case 2 di tiga solusi
+- [x] Tahap 14: use case 2 di tiga solusi
 - [ ] Tahap 15: contract test use case 2 dan penutupan
 
 ## Catatan keputusan
@@ -475,4 +475,9 @@ Tambahkan satu baris per keputusan: tanggal, keputusan, alasan singkat.
 - 2026-11-25: Tahap 13: penyaringan awal (`CandidateScreening`) memanggil MCP idx langsung, tanpa agent, lewat `McpMarketData` (endpoint dan token sama dengan MAF). `PatternDetection:MarketData = fake` memakai data tiruan untuk test. Job dibuat oleh request, sedangkan penyaringan dan start agent berjalan di `PatternJobRunner` (BackgroundService); job yang belum disaring saat restart diantrekan lagi. Hanya solusi dengan `SupportsPatternDetection` (sekarang hanya fake) yang ditawari job.
 - 2026-11-25: Tahap 13: notifikasi job lewat SignalR `Clients.User` (NameIdentifier = nama akun) dari `JobNotifier`; klien SignalR dimuat di layout untuk pengguna yang login. Ditemukan saat uji browser: transport SSE harus mendaftarkan `worker_started`/`worker_finished`, karena `EventSource` membuang tipe yang tidak didaftarkan sementara `Last-Event-ID` tetap maju. `SseTransportCatalogTests` menjaga daftar itu sama dengan skema.
 - 2026-11-25: Model Solusi 2 (LangGraph) diganti ke `qwen/qwen3.8-27b` lewat OpenRouter (diminta). Model ini mendukung tool calling, dengan konteks 1,02 juta token dan harga US$0,035 per 1 juta token input dan US$1,50 per 1 juta token output. Penggantian dilakukan setelah uji live use case 2 dengan `qwen3-30b-a3b-instruct-2507`: model lama memanggil tool yang tidak ada dan menulis nama broker, bukan kode. Uji itu berakhir dengan putus koneksi ke OpenRouter (WinError 1236); itu masalah jaringan, bukan model. Uji live UMA dan use case 2 diulang dengan model baru.
+- 2026-11-25: Tahap 14: orchestrator use case 2 ditulis sebagai kode biasa di ketiga solusi (`PatternOrchestrator.cs`, `pattern_orchestrator.py` yang disalin sama ke LangGraph dan ADK), bukan agent model. Hanya worker dan penyusun laporan yang memakai model. Alasan: batas kedalaman, aturan sebaran broker, dan anggaran job harus ditegakkan di kode, dan perbandingan tiga solusi lebih adil bila keputusan penelusuran sama.
+- 2026-11-25: Tahap 14: worker mengakhiri tugas dengan tool lokal `finish_worker` (summary, dominantBrokers, leads, findings). Penyusun laporan hanya punya `submit_report` yang butuh approval. Laporan divalidasi di kode: klaster harus sama dengan klaster orchestrator, setiap `toolCallId` harus berasal dari worker, dan daftar jejak tidak diikuti serta batas tercapai ditimpa oleh kode. Laporan tidak sah dikembalikan ke model paling banyak 2 kali.
+- 2026-11-25: Tahap 14: kode broker harus 2 huruf dan jejak saham 4 huruf; isian lain dibuang. Panggilan ke tool yang tidak ada dihitung sebagai langkah. Ditemukan saat uji live (Qwen menulis nama broker dan memanggil tool `worker_broker`).
+- 2026-11-25: Tahap 14 (ADK): worker memakai `Runner` dan session di memori, karena worker tidak perlu bertahan lebih lama dari job; hanya penyusun laporan memakai `DatabaseSessionService` (app `pattern_report`) supaya jeda approval bertahan setelah restart. Satu `McpToolset` per peran dengan `tool_filter`.
+- 2026-11-25: Tahap 14: tombol kartu approval diganti "Setujui draf" dan "Tolak draf" karena kartu yang sama dipakai untuk memo dan laporan.
 - 2026-11-24: Catatan keamanan: server Azure SQL punya aturan firewall `AllowAll-Experiment` (0.0.0.0–255.255.255.255). Belum diubah; sebaiknya dihapus dan diganti aturan per IP.

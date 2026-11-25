@@ -30,12 +30,44 @@ class AnomalyTrigger(Wire):
     volume_ratio: float | None = Field(default=None, ge=0)
 
 
+class PatternCandidate(Wire):
+    symbol: str = Symbol
+    price_change_pct: float
+    reason: str | None = None
+
+
+class PatternLimits(Wire):
+    max_depth: int = Field(ge=0)
+    max_stocks: int = Field(ge=1)
+    brokers_per_stock: int = Field(ge=1)
+    max_steps_per_worker: int = Field(ge=1)
+    max_tool_calls: int = Field(ge=1)
+    max_minutes: int = Field(ge=1)
+    min_top_buyer_share_pct: float
+    max_broker_spread_pct: float
+
+
+class PatternJob(Wire):
+    """Input of pattern detection (`$defs/PatternJob`, CHANGE-002)."""
+
+    window_start: date
+    window_end: date
+    candidates: list[PatternCandidate] = Field(min_length=1)
+    limits: PatternLimits
+
+
 class InvestigationRequest(Wire):
     case_id: str = Field(min_length=1)
     symbol: str = Symbol
     anomaly_date: date
     trigger: AnomalyTrigger
     notes: str | None = None
+    use_case: Literal["uma_investigation", "pattern_detection"] | None = None
+    job: PatternJob | None = None
+
+    @property
+    def is_pattern_detection(self) -> bool:
+        return self.use_case == "pattern_detection"
 
 
 class ApprovalDecision(Wire):
@@ -94,8 +126,11 @@ def utc_timestamp() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f") + "Z"
 
 
-def event(run_id: str, sequence: int, type_: str, payload: dict[str, Any]) -> dict[str, Any]:
-    return {"runId": run_id, "sequence": sequence, "timestamp": utc_timestamp(), "type": type_, "payload": payload}
+def event(run_id: str, sequence: int, type_: str, payload: dict[str, Any], agent_name: str | None = None) -> dict[str, Any]:
+    e = {"runId": run_id, "sequence": sequence, "timestamp": utc_timestamp(), "type": type_, "payload": payload}
+    if agent_name:
+        e["agentName"] = agent_name  # multi-agent runs only (CHANGE-002)
+    return e
 
 
 def tool_finished(call_id: str, name: str, ok: bool, summary: str, code: str | None = None,
@@ -140,3 +175,73 @@ def tool_source(envelope: dict[str, Any] | None) -> dict[str, Any]:
     if isinstance(envelope.get("stale"), bool):
         source["stale"] = envelope["stale"]
     return source
+
+
+# ---- CHANGE-002: pattern detection ----
+
+class Lead(Wire):
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True, extra="ignore")
+
+    kind: Literal["stock", "broker"]
+    target: str = Field(min_length=1)
+    reason: str = Field(min_length=1)
+
+
+class Statement(Wire):
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True, extra="ignore")
+
+    statement: str = Field(min_length=1)
+    evidence: list[Evidence] = Field(default_factory=list)
+
+
+class BrokerShare(Wire):
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True, extra="ignore")
+
+    broker: str = Field(min_length=1)
+    net_buy_share_pct: float
+
+
+class WorkerReport(Wire):
+    """The arguments of finish_worker (asd-pattern-detection.md, Protokol worker)."""
+
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True, extra="ignore")
+
+    summary: str = Field(min_length=1)
+    dominant_brokers: list[BrokerShare] = Field(default_factory=list)
+    leads: list[Lead] = Field(default_factory=list)
+    findings: list[Statement] = Field(default_factory=list)
+
+
+class ReportCounts(Wire):
+    clusters: int = Field(ge=0)
+    stocks: int = Field(ge=0)
+    brokers: int = Field(ge=0)
+
+
+class PatternCluster(Wire):
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True, extra="ignore")
+
+    name: str = Field(min_length=1)
+    stocks: list[str] = Field(min_length=1)
+    dominant_brokers: list[str] = Field(default_factory=list)
+    chronology: str = Field(min_length=1)
+    ownership_links: str | None = None
+    findings: list[Statement] = Field(min_length=1)
+
+
+class PatternReport(Wire):
+    """The report submitted for the analyst (`$defs/PatternReport`). Lists the model leaves out default to empty."""
+
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True, extra="ignore")
+
+    summary: str = Field(min_length=1)
+    period_start: date | None = None
+    period_end: date | None = None
+    counts: ReportCounts | None = None
+    clusters: list[PatternCluster] = Field(default_factory=list)
+    alternative_explanations: list[Statement] = Field(default_factory=list)
+    leads_not_followed: list[Lead] = Field(default_factory=list)
+    limits_reached: list[str] = Field(default_factory=list)
+    data_limitations: list[str] = Field(default_factory=list)
+    follow_ups: list[str] = Field(default_factory=list)
+    disclaimer: str = DISCLAIMER

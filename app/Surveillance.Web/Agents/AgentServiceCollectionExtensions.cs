@@ -49,7 +49,7 @@ public sealed class AgentClientRegistry(IServiceProvider services, IConfiguratio
         new(LangGraph, "LangGraph", configuration["Agent:LangGraph:ModelLabel"] ?? "-",
             "Service Python terpisah; model diatur di agents/langgraph/.env.", SupportsPatternDetection: true),
         new(Adk, "Google ADK", configuration["Agent:Adk:ModelLabel"] ?? "-",
-            "Service Python terpisah; model diatur di agents/adk/.env."),
+            "Service Python terpisah; model diatur di agents/adk/.env.", SupportsPatternDetection: true),
     ];
 
     public bool IsKnown(string key) => Providers.Any(p => p.Key == Normalize(key));

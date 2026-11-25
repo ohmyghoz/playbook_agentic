@@ -188,4 +188,4 @@ kesimpulan pelanggaran."
 | Solusi | Status |
 |---|---|
 | Agent tiruan (`FakeAgentClient`) | Tahap 13: orchestrator, tiga jenis worker yang berjalan berselang, satu jejak baru, lalu approval laporan |
-| MAF, LangGraph, ADK | Tahap 14, dengan protokol worker dan orchestrator di atas |
+| MAF, LangGraph, ADK | Tahap 14, dengan protokol worker dan orchestrator di atas. Rincian per solusi di `EVENT-MAPPING.md` masing-masing. |

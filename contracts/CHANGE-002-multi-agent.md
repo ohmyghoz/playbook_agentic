@@ -1,7 +1,7 @@
 # CHANGE-002: event untuk agent multi-worker
 
 Status: diterima (Keputusan kontrak di CLAUDE.md) dan diterapkan di Tahap 13
-untuk agent tiruan. MAF, LangGraph, dan ADK menyusul di Tahap 14.
+untuk agent tiruan, lalu di MAF, LangGraph, dan ADK pada Tahap 14.
 
 ## Kebutuhan front end
 
@@ -41,9 +41,9 @@ laporan. Bentuknya tidak berubah.
 | Solusi | Tahap 13 | Tahap 14 |
 |---|---|---|
 | Fake | Skrip job lengkap: orchestrator, worker saham, broker, dan kepemilikan berselang, satu jejak baru, approval laporan | – |
-| MAF | Belum mendukung. Aplikasi tidak menawarkan job untuk solusi ini (`AgentProvider.SupportsPatternDetection`). | Orchestrator dan worker sesuai dokumentasi MAF |
-| LangGraph | Sama dengan MAF. Service membalas `400` untuk `pattern_detection`. | Subgraph atau graph multi-agent |
-| ADK | Sama dengan LangGraph | Agent orchestrator dengan sub-agent |
+| MAF | Belum mendukung. Aplikasi tidak menawarkan job untuk solusi ini (`AgentProvider.SupportsPatternDetection`). | Orchestrator sebagai kode (`PatternOrchestrator.cs`), worker `ChatClientAgent` paralel, `submit_report` dengan `ApprovalRequiredAIFunction` |
+| LangGraph | Sama dengan MAF. Service membalas `400` untuk `pattern_detection`. | Graph kedua (`pattern_graph.py`): node `workers` menjalankan orchestrator dan satu `StateGraph` per worker, lalu `report_agent` dan `review` dengan `interrupt()` |
+| ADK | Sama dengan LangGraph | Orchestrator sebagai kode, satu `LlmAgent` per worker dengan `Runner` sendiri, `submit_report` dengan Tool Confirmation (`pattern_agents.py`) |
 
 ## Kompatibilitas ke belakang
 
