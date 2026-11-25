@@ -89,3 +89,46 @@ Run yang sedang berjalan saat proses berhenti ditutup dengan `error` kode
 `run_interrupted` dan `retryable: true`, bukan lagi `internal`. Lihat
 `docs/RESTART.md`.
 Adapter menulisnya saat stream dibuka untuk run berstatus `Running` dari proses sebelumnya.
+
+## Use case 2: deteksi pola (Tahap 14, CHANGE-002)
+
+`MafAgentClient` meneruskan run dengan `useCase: pattern_detection` ke
+`PatternRunner`. Susunannya mengikuti "Protokol worker dan orchestrator" di
+`contracts/asd-pattern-detection.md`:
+
+| Bagian | MAF |
+|---|---|
+| Orchestrator | `PatternOrchestrator` (kode biasa, tanpa model). Paling banyak 3 worker berjalan bersamaan (`SemaphoreSlim`). |
+| Worker | Satu `ChatClientAgent` per worker, dengan tool MCP sesuai perannya (`IToolSource.GetToolsAsync(names)`) dan `finish_worker` (`AIFunctionFactory.Create`) |
+| Batas langkah worker dan job | Function middleware (`AsBuilder().Use`). Hitungan per worker, dan `JobBudget` untuk tool call serta durasi job. |
+| Penyusun laporan | `ChatClientAgent` dengan satu tool `submit_report` (`ApprovalRequiredAIFunction` berisi `PatternReport`). Sesinya diserialisasi saat menunggu analis, sama seperti `submit_memo`. |
+
+| Event | Asal |
+|---|---|
+| `worker_started`, `worker_finished` | `Emitter.WorkerStarted`/`WorkerFinished`, dipanggil `PatternRunner` sebelum dan sesudah worker berjalan |
+| `agentName` | `Emitter.Event(…, agentName)`. Event run dan narasi memakai `orchestrator`; tool call memakai id worker, yang dicatat di `RunState.CallAgents`. |
+| `tool_call_*` worker | `FunctionCallContent` dan `FunctionResultContent` dari stream worker. `finish_worker` tidak dipancarkan. |
+| `token` | Hanya narasi orchestrator (kalimat dari kode) dan teks penyusun laporan. Teks worker dibuang supaya tidak bercampur. |
+| `approval_required.report` | `submit_report` yang lolos validasi |
+
+**Validasi laporan** (`PatternRunner.ValidateReport`). Laporan yang tidak
+lolos dikembalikan ke model dengan penjelasan, paling banyak 3 kali, lalu run
+berakhir dengan `model_error`. Laporan ditolak bila:
+
+- ada `toolCallId` yang tidak berasal dari worker;
+- `clusters` tidak sama dengan klaster orchestrator.
+
+Bagian yang selalu diambil dari kode, menimpa isian model: periode, `counts`,
+`leadsNotFollowed`, `limitsReached`, dan `disclaimer`. Daftar yang
+dikosongkan model dinormalkan menjadi daftar kosong.
+
+**Thread safety.** Worker berjalan paralel, jadi `Emitter` memakai satu kunci
+untuk nomor `sequence`, penggabungan token, dan pasangan tool call.
+
+**Uji live** (25 November 2026, gpt-5-mini, 3 kandidat dari penyaringan MCP
+sungguhan):
+
+| Uji | Hasil |
+|---|---|
+| Job penuh | 3 worker saham berjalan paralel dengan tool call sungguhan, laporan diajukan, lalu disetujui. Tidak ada broker yang diikuti, karena porsi beli bersih broker teratas di bawah ambang 40%. Jalur broker dan jejak baru diuji dengan worker tiruan di `PatternOrchestratorTests`. |
+| Batas job 4 tool call | Ketiga worker selesai dengan `limit_reached`. Laporan parsial mencatat "Batas 4 panggilan data per job tercapai.". Dua laporan pertama ditolak validasi dan diperbaiki model. Revisi analis menghasilkan revisi 1, lalu disetujui. |

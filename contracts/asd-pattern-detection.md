@@ -65,6 +65,69 @@ selalu muncul di mana-mana. Pengecualiannya: porsi beli bersih broker itu di
 saham tersebut melewati `minTopBuyerSharePct`. Setiap jejak yang tidak diikuti
 dicatat di `leadsNotFollowed` beserta alasannya.
 
+## Protokol worker dan orchestrator
+
+Bagian ini sama untuk MAF, LangGraph, dan ADK, supaya ketiga solusi bisa
+dibandingkan.
+
+**Orchestrator dijalankan oleh kode.** Keputusan delegasi mengikuti aturan di
+Alur kerja dan batas di `job.limits`. Aturan ini ditulis di kode, bukan
+diserahkan ke model, supaya batas benar-benar ditegakkan. Langkahnya:
+
+1. Jalankan worker saham untuk setiap kandidat (kedalaman 0), paling banyak 3 worker sekaligus.
+2. Untuk setiap broker dominan dari hasil worker saham (paling banyak `brokersPerStock` per saham): broker yang menjadi dominan di lebih dari `maxBrokerSpreadPct` saham kandidat tidak diikuti, kecuali porsi beli bersihnya mencapai `minTopBuyerSharePct`. Broker lain diikuti dengan worker broker pada kedalaman saham asalnya ditambah 1, selama tidak melewati `maxDepth`.
+3. Saham baru dari jejak worker broker diperiksa worker saham pada kedalaman yang sama dengan broker yang menemukannya, selama jumlah saham belum mencapai `maxStocks`. Kembali ke langkah 2 sampai tidak ada jejak baru.
+4. Saham yang berbagi broker dominan menjadi satu klaster. Setiap klaster dengan minimal dua saham diperiksa oleh satu worker kepemilikan.
+5. Agent penyusun laporan, yang hanya punya tool `submit_report`, menyusun `PatternReport` dari hasil semua worker.
+
+Narasi orchestrator (event `token` dengan `agentName: orchestrator`) ditulis
+oleh kode untuk setiap keputusan delegasi, ditambah teks agent penyusun
+laporan. Narasi worker tidak dipancarkan, karena worker berjalan bersamaan dan
+teksnya akan bercampur. Temuan worker muncul di `worker_finished.summary`.
+
+**Worker adalah agent model dengan tool sesuai perannya** (tabel Peran dan
+tool). Setiap worker mengakhiri tugasnya dengan memanggil tool lokal
+`finish_worker`:
+
+| Argumen | Isi |
+|---|---|
+| `summary` | Ringkasan temuan, bahasa indikasi, paling panjang 500 karakter |
+| `dominantBrokers` | Worker saham: daftar `{ "broker": "YP", "netBuySharePct": 38.5 }`, terurut dari porsi terbesar |
+| `leads` | Worker broker: saham lain dengan pola serupa, `{ "kind": "stock", "target": "BRMS", "reason": "…" }` |
+| `findings` | Pernyataan dengan bukti `{ "statement", "evidence": [{ "toolCallId", "toolName", "detail" }] }` |
+
+- **Batas langkah worker.** Setelah `maxStepsPerWorker` panggilan tool MCP, worker diberi peringatan untuk memanggil `finish_worker`. Bila worker masih meminta tool lain, worker ditutup dengan `status: limit_reached`.
+- **Worker yang tidak memanggil `finish_worker`.** Worker yang berhenti tanpa memanggilnya diberi dua kali pesan lanjut, lalu ditutup dengan `status: error`.
+- **Batas job.** `maxToolCalls` dan `maxMinutes` dihitung untuk seluruh job. Saat salah satunya tercapai, worker yang sedang berjalan ditutup dengan `limit_reached`, worker yang belum mulai tidak dijalankan, dan laporan langsung disusun.
+
+Agent penyusun laporan menerima hasil worker dalam bentuk JSON dan memanggil
+`submit_report` dengan `PatternReport`. Keputusan revisi dikirim ke agent yang
+sama beserta komentar analis.
+
+### Instruksi worker
+
+Teks ini dipakai apa adanya oleh ketiga solusi. `{role}`, `{target}`,
+`{windowStart}`, `{windowEnd}`, dan `{maxSteps}` diganti saat worker dibuat.
+
+```text
+Anda worker {role} dalam deteksi pola akumulasi-distribusi di Bursa Efek Indonesia. Target Anda: {target}. Jendela pengamatan {windowStart} sampai {windowEnd}.
+Gunakan hanya tool yang tersedia, paling banyak {maxSteps} panggilan. Setiap hasil tool diawali [toolCallId: ...]; rujuk id itu sebagai bukti.
+Worker saham: periksa pergerakan harga dan volume dalam jendela, lalu broker summary (idx_broker) untuk porsi nilai beli bersih broker teratas; laporkan broker dominan di dominantBrokers.
+Worker broker: cari saham lain tempat broker target menjadi pembeli teratas dengan pola serupa; laporkan sebagai leads (kind stock).
+Worker kepemilikan: periksa apakah saham-saham target punya pemegang saham yang sama atau terafiliasi di atas 1%.
+Bila tool gagal, catat di summary dan lanjutkan. Jangan menyimpulkan manipulasi atau pelanggaran; tulis sebagai indikasi.
+Akhiri dengan memanggil finish_worker tepat satu kali.
+```
+
+### Instruksi penyusun laporan
+
+```text
+Anda penyusun laporan deteksi pola akumulasi-distribusi untuk analis pengawasan pasar modal. Anda menerima hasil worker dalam JSON: klaster, temuan, jejak yang tidak diikuti, dan batas yang tercapai.
+Susun PatternReport lalu panggil submit_report. Setiap pernyataan di findings dan alternativeExplanations harus merujuk toolCallId dari temuan worker. Jangan menambah fakta yang tidak ada di hasil worker.
+Gunakan bahasa indikasi, bukan kesimpulan pelanggaran. disclaimer selalu "Indikasi untuk ditelaah analis, bukan kesimpulan pelanggaran."
+Bila analis meminta revisi, perbaiki laporan sesuai komentarnya lalu panggil submit_report lagi.
+```
+
 ## Event
 
 Semua event katalog berlaku seperti di investigator UMA, dengan tambahan
@@ -125,4 +188,4 @@ kesimpulan pelanggaran."
 | Solusi | Status |
 |---|---|
 | Agent tiruan (`FakeAgentClient`) | Tahap 13: orchestrator, tiga jenis worker yang berjalan berselang, satu jejak baru, lalu approval laporan |
-| MAF, LangGraph, ADK | Tahap 14 |
+| MAF, LangGraph, ADK | Tahap 14, dengan protokol worker dan orchestrator di atas |

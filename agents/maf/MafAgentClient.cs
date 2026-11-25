@@ -117,6 +117,12 @@ public sealed class MafAgentClient : IAgentClient
                     return;
             }
 
+            if (state.Request.IsPatternDetection)
+            {
+                await new PatternRunner(_options, _chatClient, _tools, _logger).ProduceAsync(state, emit, ct);
+                return;
+            }
+
             var input = state.Phase == RunPhase.New ? StartInput(state, emit) : ResumeInput(state, emit);
             if (input is null)
             {
@@ -154,12 +160,14 @@ public sealed class MafAgentClient : IAgentClient
         {
             _logger.LogError(ex, "Model call failed for run {RunId}", state.RunId);
             emit.CloseOpenCalls("model_error", "Model gagal merespons.");
+            emit.CloseOpenWorkers(WorkerStatus.Error, "Worker berhenti karena model gagal merespons.");
             emit.Error(AgentErrorCode.ModelError, "Model AI sedang tidak merespons. Coba lagi dalam beberapa menit.", true);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "MAF run {RunId} failed", state.RunId);
             emit.CloseOpenCalls("internal", "Terjadi kesalahan.");
+            emit.CloseOpenWorkers(WorkerStatus.Error, "Worker berhenti karena galat agent.");
             emit.Error(AgentErrorCode.Internal, "Terjadi kesalahan pada agent. Mulai investigasi baru untuk mencoba lagi.", false);
         }
         finally
@@ -361,62 +369,85 @@ public sealed class MafAgentClient : IAgentClient
         }
     }
 
-    /// <summary>Numbers events, batches text deltas, and keeps tool-call pairing consistent.</summary>
-    private sealed class Emitter(RunState state, ChannelWriter<AgentEvent> writer)
+    /// <summary>
+    /// Numbers events, batches text deltas, and keeps tool-call pairing consistent. Thread-safe:
+    /// pattern-detection workers run in parallel and share one sequence (CHANGE-002).
+    /// </summary>
+    internal sealed class Emitter(RunState state, ChannelWriter<AgentEvent> writer)
     {
+        private readonly object _lock = new();
+
+        /// <summary>agentName for run-level events: "orchestrator" for pattern detection, none for UMA.</summary>
+        private string? RunAgent => state.Request.IsPatternDetection ? PatternInstructions.Orchestrator : null;
+
         // Model deltas are often a few characters; batching keeps the event log readable and small.
         private const int TokenBatchChars = 60;
         private readonly System.Text.StringBuilder _tokens = new();
 
         public void Token(string text)
         {
-            _tokens.Append(text);
-            if (_tokens.Length >= TokenBatchChars)
+            lock (_lock)
             {
-                FlushTokens();
+                _tokens.Append(text);
+                if (_tokens.Length >= TokenBatchChars)
+                {
+                    FlushTokens();
+                }
             }
         }
 
         public void FlushTokens()
         {
-            if (_tokens.Length == 0 || state.Phase == RunPhase.Finished)
+            lock (_lock)
             {
-                return;
-            }
+                if (_tokens.Length == 0 || state.Phase == RunPhase.Finished)
+                {
+                    return;
+                }
 
-            var text = _tokens.ToString();
-            _tokens.Clear();
-            writer.TryWrite(AgentEvent.Create(state.RunId, ++state.Sequence, AgentEventType.Token, new TokenPayload(text)));
+                var text = _tokens.ToString();
+                _tokens.Clear();
+                writer.TryWrite(AgentEvent.Create(state.RunId, ++state.Sequence, AgentEventType.Token, new TokenPayload(text), RunAgent));
+            }
         }
 
-        public void Event<T>(AgentEventType type, T payload)
+        public void Event<T>(AgentEventType type, T payload, string? agentName = null)
         {
-            if (state.Phase == RunPhase.Finished)
+            lock (_lock)
             {
-                return;
-            }
+                if (state.Phase == RunPhase.Finished)
+                {
+                    return;
+                }
 
-            FlushTokens();
+                FlushTokens();
 
-            // run_started comes first; every other stage is announced before the event that starts it.
-            if (type != AgentEventType.RunStarted)
-            {
-                AnnounceStep(type, (payload as ToolCallStartedPayload)?.ToolName);
-            }
+                // run_started comes first; every other stage is announced before the event that starts it.
+                if (type != AgentEventType.RunStarted)
+                {
+                    AnnounceStep(type, (payload as ToolCallStartedPayload)?.ToolName);
+                }
 
-            writer.TryWrite(AgentEvent.Create(state.RunId, ++state.Sequence, type, payload));
-            if (type is AgentEventType.Done or AgentEventType.Error)
-            {
-                state.Phase = RunPhase.Finished;
-            }
-            else if (type == AgentEventType.RunStarted)
-            {
-                AnnounceStep(type, null);
+                writer.TryWrite(AgentEvent.Create(state.RunId, ++state.Sequence, type, payload, agentName ?? RunAgent));
+                if (type is AgentEventType.Done or AgentEventType.Error)
+                {
+                    state.Phase = RunPhase.Finished;
+                }
+                else if (type == AgentEventType.RunStarted)
+                {
+                    AnnounceStep(type, null);
+                }
             }
         }
 
         private void AnnounceStep(AgentEventType type, string? toolName)
         {
+            // The five ASD stages belong to the UMA investigator; pattern detection shows workers instead.
+            if (state.Request.IsPatternDetection)
+            {
+                return;
+            }
+
             if (InvestigationSteps.Next(state.Step, type, toolName) is { } step)
             {
                 state.Step = step;
@@ -424,28 +455,39 @@ public sealed class MafAgentClient : IAgentClient
             }
         }
 
-        public void Started(FunctionCallContent call)
+        public void Started(FunctionCallContent call, string? agentName = null)
         {
-            if (!state.StartedCallIds.Add(call.CallId))
+            lock (_lock)
             {
-                return;
-            }
+                if (!state.StartedCallIds.Add(call.CallId))
+                {
+                    return;
+                }
 
-            state.CallNames[call.CallId] = call.Name;
-            var args = call.Name == InvestigatorInstructions.SubmitMemo
-                ? JsonSerializer.SerializeToElement(new { memo = "(lihat approval_required)" })
-                : JsonSerializer.SerializeToElement(call.Arguments ?? new Dictionary<string, object?>(), AIJsonUtilities.DefaultOptions);
-            Event(AgentEventType.ToolCallStarted, new ToolCallStartedPayload(call.CallId, call.Name, args));
+                state.CallNames[call.CallId] = call.Name;
+                if (agentName is not null)
+                {
+                    state.CallAgents[call.CallId] = agentName;
+                }
+
+                var args = call.Name is InvestigatorInstructions.SubmitMemo or PatternInstructions.SubmitReport
+                    ? JsonSerializer.SerializeToElement(new { draft = "(lihat approval_required)" })
+                    : JsonSerializer.SerializeToElement(call.Arguments ?? new Dictionary<string, object?>(), AIJsonUtilities.DefaultOptions);
+                Event(AgentEventType.ToolCallStarted, new ToolCallStartedPayload(call.CallId, call.Name, args), agentName);
+            }
         }
 
         public void Finished(ToolCallFinishedPayload payload)
         {
-            if (!state.StartedCallIds.Contains(payload.ToolCallId) || !state.FinishedCallIds.Add(payload.ToolCallId))
+            lock (_lock)
             {
-                return;
-            }
+                if (!state.StartedCallIds.Contains(payload.ToolCallId) || !state.FinishedCallIds.Add(payload.ToolCallId))
+                {
+                    return;
+                }
 
-            Event(AgentEventType.ToolCallFinished, payload);
+                Event(AgentEventType.ToolCallFinished, payload, state.CallAgents.GetValueOrDefault(payload.ToolCallId));
+            }
         }
 
         public void Finished(string callId, ToolCallStatus status, string summary, ToolError? error = null) =>
@@ -453,15 +495,64 @@ public sealed class MafAgentClient : IAgentClient
 
         public void CloseOpenCalls(string code, string message)
         {
-            foreach (var id in state.OpenCallIds.ToList())
+            lock (_lock)
             {
-                Finished(id, ToolCallStatus.Error, message, new ToolError(code, message));
+                foreach (var id in state.OpenCallIds.ToList())
+                {
+                    Finished(id, ToolCallStatus.Error, message, new ToolError(code, message));
+                }
+            }
+        }
+
+        /// <param name="agentName">Close only this worker's open calls (pattern detection).</param>
+        public void CloseOpenCalls(string code, string message, string agentName)
+        {
+            lock (_lock)
+            {
+                foreach (var id in state.OpenCallIds.Where(id => state.CallAgents.GetValueOrDefault(id) == agentName).ToList())
+                {
+                    Finished(id, ToolCallStatus.Error, message, new ToolError(code, message));
+                }
+            }
+        }
+
+        public void WorkerStarted(WorkerStartedPayload worker)
+        {
+            lock (_lock)
+            {
+                state.OpenWorkers[worker.WorkerId] = worker.Role;
+                Event(AgentEventType.WorkerStarted, worker, worker.WorkerId);
+            }
+        }
+
+        public void WorkerFinished(WorkerFinishedPayload worker)
+        {
+            lock (_lock)
+            {
+                if (state.OpenWorkers.Remove(worker.WorkerId))
+                {
+                    Event(AgentEventType.WorkerFinished, worker, worker.WorkerId);
+                }
+            }
+        }
+
+        /// <summary>Every worker still running is closed before the run ends (asd-pattern-detection.md).</summary>
+        public void CloseOpenWorkers(WorkerStatus status, string summary)
+        {
+            lock (_lock)
+            {
+                foreach (var (id, role) in state.OpenWorkers.ToList())
+                {
+                    CloseOpenCalls(status == WorkerStatus.Cancelled ? "cancelled" : "internal", summary, id);
+                    WorkerFinished(new WorkerFinishedPayload(id, role, status, summary));
+                }
             }
         }
 
         public void Done(RunOutcome outcome) =>
             Event(AgentEventType.Done, new DonePayload(outcome, state.ToolCallsUsed,
-                outcome == RunOutcome.Cancelled ? null : state.Memo));
+                outcome == RunOutcome.Cancelled ? null : state.Memo,
+                outcome == RunOutcome.Cancelled ? null : state.Report));
 
         public void Error(AgentErrorCode code, string message, bool retryable) =>
             Event(AgentEventType.Error, new ErrorPayload(code, message, retryable));
@@ -469,6 +560,7 @@ public sealed class MafAgentClient : IAgentClient
         public void Cancel()
         {
             CloseOpenCalls("cancelled", "Dihentikan oleh pengguna.");
+            CloseOpenWorkers(WorkerStatus.Cancelled, "Dihentikan oleh pengguna.");
             Done(RunOutcome.Cancelled);
         }
     }

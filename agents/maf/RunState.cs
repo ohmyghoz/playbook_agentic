@@ -36,6 +36,15 @@ internal sealed class RunState
     public Memo? Memo { get; set; }
     public InvestigationStep? Step { get; set; }
 
+    // ---- pattern detection (CHANGE-002) ----
+    public PatternReport? Report { get; set; }
+    public Dictionary<string, string> CallAgents { get; set; } = [];
+    public Dictionary<string, WorkerRole> OpenWorkers { get; set; } = [];
+    public int InvalidReportAttempts { get; set; }
+
+    /// <summary>The orchestrator's results (PatternFacts) as JSON; the report keeps its lists.</summary>
+    public string? PatternFactsJson { get; set; }
+
     /// <summary>True after the analyst approved and before submit_memo's result arrived.</summary>
     public bool AwaitingApprovedSubmit { get; set; }
 
